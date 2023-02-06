@@ -1,3 +1,15 @@
+# webDiplomacy.net fork
+
+This is a fork of the facebookresearch repo, tweaked and with documentation oriented towards running the AI bots against a webDiplomacy installation.
+
+## Notes
+* Running on Ubuntu 20.04
+* Make sure you are running using the nvidia driver, install via Settings > About > Software > Additional drivers. I used driver version 510 with a 2080, 525 didn't work with Wayland.
+* Installing numba via pip as below will make numba try and install numpy 1.24 which isn't compatible with Python 3.7. Be sure to upgrade pip 19 to the latest version.
+* Install VS Code, docker, the VS Code Docker extensions, get the webDiplomacy.net repo and run the Dockerfile. This will allow testing of the AI against a local installation.
+
+Below is the original readme information:
+
 # Diplomacy Cicero and Diplodocus
 
 This code contains checkpoints and training code the following papers:
