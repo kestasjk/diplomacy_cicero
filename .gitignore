@@ -40,3 +40,5 @@ dipcc/Testing/
 /src/
 dipcc/detect_cuda_version.cc
 node_modules/
+logs/*
+models/*
