@@ -25,7 +25,7 @@ pre-commit==2.17.0
 psutil==5.9.0
 pygtrie==2.4.2
 pytest==6.2.1
-pytorch-pretrained-bert==0.6.2
+pytorch-pretrained-bert
 requests==2.27.1
 requests_futures==1.0.0
 redis==4.1.4
@@ -35,8 +35,8 @@ tabulate==0.8.9
 tensorboard==2.8.0
 termcolor==1.1.0
 tokenizers==0.10.3
-torchtext==0.8.1
-torch  # not specifying explicit version due to aws/fair discrepancy. install_deps will install exact version
+torchtext
+torch==1.13.1  # not specifying explicit version due to aws/fair discrepancy. install_deps will install exact version
 transformers==4.12.5
 tqdm==4.62.1
 typer==0.4.1

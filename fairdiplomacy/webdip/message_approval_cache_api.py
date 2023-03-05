@@ -38,13 +38,13 @@ NOTE: Some hard-coded global constants need to be set for this work (REDIS_IP, P
 PRESS_COUNTRY_ID_TO_POWER = COUNTRY_ID_TO_POWER_OR_ALL
 PRESS_POWER_TO_COUNTRY_ID = {v: k for k, v in PRESS_COUNTRY_ID_TO_POWER.items()}
 
-REDIS_IP = None
+REDIS_IP = "127.0.0.1"
 # Production
 PROD_DB = 1
 DEV_DB = 2
-PORT = None
+PORT = 6379
 
-WEBDIP_GAMES_BASE_DIR = None
+WEBDIP_GAMES_BASE_DIR = "/home/kestasjk/fair_webdip"
 WEBDIP_GAMES_DIR_GLOB = f"{WEBDIP_GAMES_BASE_DIR}/**/games"
 
 if REDIS_IP is None or PORT is None or WEBDIP_GAMES_BASE_DIR is None:

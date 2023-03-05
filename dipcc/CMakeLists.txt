@@ -55,11 +55,11 @@ ELSE()
     set_target_properties(pydipcc PROPERTIES LIBRARY_OUTPUT_DIRECTORY "dipcc/python/")
 ENDIF()
 
-# Compile profiling
-IF(CMAKE_BUILD_TYPE MATCHES Release)
-    add_executable(profile_dipcc dipcc/profiling/profile.cc ${SOURCES})
-    target_link_libraries(profile_dipcc dipcc glog pthread)
-
-    add_executable(profile_dipcc_late dipcc/profiling/profile_late.cc ${SOURCES})
-    target_link_libraries(profile_dipcc_late dipcc glog pthread)
-ENDIF()
+# Compile profiling (profiling not supported on WSL)
+#IF(CMAKE_BUILD_TYPE MATCHES Release)
+#    add_executable(profile_dipcc dipcc/profiling/profile.cc ${SOURCES})
+#    target_link_libraries(profile_dipcc dipcc glog pthread)
+#
+#    add_executable(profile_dipcc_late dipcc/profiling/profile_late.cc ${SOURCES})
+#    target_link_libraries(profile_dipcc_late dipcc glog pthread)
+#ENDIF()

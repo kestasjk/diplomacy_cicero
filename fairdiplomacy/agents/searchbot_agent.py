@@ -1085,7 +1085,7 @@ class SearchBotAgent(BaseSearchAgent):
                 msg_dict["recipient"],
                 msg_dict["message"],
                 msg_dict["time_sent"],
-                # increment_on_collision=True,  # Uncomment if we want to support 0 sleep time messages!
+                increment_on_collision=True,  # Uncomment if we want to support 0 sleep time messages!
             )
             cf_games.append(cf_game)
         rescored_bp_policies = self.order_sampler.rescore_actions_parlai_multi_games(

@@ -21,6 +21,7 @@ selfplay:
 
 # Compiles protos and sets up pyi files for pyright to be happy.
 protos:
+	echo "$PATH"
 	protoc conf/*.proto --python_out ./ --mypy_out ./
 	python heyhi/bin/patch_protos.py conf/*pb2.py
 

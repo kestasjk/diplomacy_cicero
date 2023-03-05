@@ -111,7 +111,7 @@ Some hard-coded global constants need to be set for this work. See fairdiplomacy
 GameId = int
 DialogueState = Tuple[str, int]  # phase, num_messages
 API_PATH = "/api.php"
-WEBDIP_URL = "https://webdiplomacy.net/"
+WEBDIP_URL = os.getenv("WEBDIP_URL")
 
 GLOBAL_CHAT_COUNTRY_ID = 0
 STATUS_ROUTE = "game/status"
