@@ -29,6 +29,8 @@ from fairdiplomacy.typedefs import Power, StrEnum, Context
 from fairdiplomacy.viz.meta_annotations.annotator import MetaAnnotator
 from parlai_diplomacy.wrappers.classifiers import INF_SLEEP_TIME
 
+import os
+
 """
 FvA games will not have press, so we can assume that variant type is classic.
 
@@ -37,20 +39,36 @@ NOTE: Some hard-coded global constants need to be set for this work (REDIS_IP, P
 """
 PRESS_COUNTRY_ID_TO_POWER = COUNTRY_ID_TO_POWER_OR_ALL
 PRESS_POWER_TO_COUNTRY_ID = {v: k for k, v in PRESS_COUNTRY_ID_TO_POWER.items()}
+MESSAGE_REVIEW_CODEBASE_VERSION = 1
 
-REDIS_IP = None
+logger = logging.getLogger("webdip")
+
+# If REDIS_IP exists use that, otherwise set REDIS_IP to localhost
+REDIS_IP = os.environ.get("REDIS_IP", "127.0.0.1")
 # Production
 PROD_DB = 1
 DEV_DB = 2
-PORT = None
+PORT = int(os.environ.get("REDIS_PORT", "6379"))
+logger.info(f"REDIS_IP: {REDIS_IP} PORT: {PORT}")
 
-WEBDIP_GAMES_BASE_DIR = None
+# Check that REDIS_IP and PORT are listening:
+try:
+    redis_host = redis.Redis(host=REDIS_IP, port=PORT, db=PROD_DB)
+    redis_host.ping()
+except Exception as e:
+    raise ConnectionError(
+        f"Could not connect to Redis at {REDIS_IP}:{PORT}. Error: {e}"
+    )
+WEBDIP_GAMES_BASE_DIR = os.environ.get("WEBDIP_GAMES_BASE_DIR", os.getcwd()) # "/home/kestasjk/fair"
 WEBDIP_GAMES_DIR_GLOB = f"{WEBDIP_GAMES_BASE_DIR}/**/games"
 
-if REDIS_IP is None or PORT is None or WEBDIP_GAMES_BASE_DIR is None:
-    raise NotImplementedError("This global variables must be set.")
 
-MESSAGE_REVIEW_CODEBASE_VERSION = 1
+# Check that WEBDIPI_GAMES_BASE_DIR exists
+if not pathlib.Path(WEBDIP_GAMES_BASE_DIR).exists():
+    raise FileNotFoundError(
+        f"WEBDIP_GAMES_BASE_DIR ({WEBDIP_GAMES_BASE_DIR}) does not exist!"
+    )
+
 
 
 # A string represents concatenation of phase and message history. Used to check
@@ -59,7 +77,7 @@ MESSAGE_REVIEW_CODEBASE_VERSION = 1
 PhaseMessageHistoryHash = str
 
 PHASE_MESSAGE_HISTORY_HASH_SUFFIX = ":message_history_state"
-PHASE_MESSAGE_HISTORY_TTL_SECONDS = 60 * 5  # 5 minutes.
+PHASE_MESSAGE_HISTORY_TTL_SECONDS = 60 * 60 * 24 # Previously 5 minutes
 
 
 class MessageApprovalRedisCacheException(Exception):

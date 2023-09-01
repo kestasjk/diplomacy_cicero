@@ -1,3 +1,12 @@
+# The nonsense filters, which make up about half of the total VRAM requirement. To get 
+# full-press running with less than 50GB VRAM available the best option is to disable some
+# of these nonsense filters.
+# Filters marked with <canBeDisabled> can be disabled by commenting out without affecting 
+# the output too much or causing any errors, and
+# will allow everything to fit within a 24GB VRAM GPU (however the nonsense filters are there
+# for a reason, and the messages generated without them can be nonsensical).
+
+# Detects locations that make no sense
 nonsense_classifiers {
   name: "location"
   nonsense_classifier{
@@ -8,6 +17,7 @@ nonsense_classifiers {
     }
   }
 }
+# Detects use of powers that make no sense
 nonsense_classifiers {
   name: "power"
   nonsense_classifier{
@@ -18,6 +28,7 @@ nonsense_classifiers {
     }
   }
 }
+# Detects location symbols that make no sense (seems like location?)
 nonsense_classifiers {
   name: "symbol"
   nonsense_classifier{
@@ -28,6 +39,13 @@ nonsense_classifiers {
     }
   }
 }
+
+# HVM filters use model generated bad data which contain generated
+# mistakes / nonsense and detects whether the message is similar to that.
+
+# Filters messages that should have appropriate message history
+# being sent without any history, e.g. complicated alliance proposals
+# with no corresponding lead-up.
 nonsense_classifiers {
   name: "hvm_with_no_message_history"
   nonsense_classifier{
@@ -48,6 +66,11 @@ nonsense_classifiers {
     }
   }
 }
+# This model in particular seems to cause the GPU to go into an infinite loop, and the bot
+# to hang at: W0831 09:41:06 [classifiers:818] get_verbose_nonsense_status result hvm_singleseed_seed2_2Mphasesorderhistory_2Mphasesstatehistory_150000steps 
+
+
+#<canBeDisabled>
 nonsense_classifiers {
   name: "hvm_singleseed_seed2_2Mphasesorderhistory_2Mphasesstatehistory_150000steps"
   nonsense_classifier{
@@ -58,6 +81,8 @@ nonsense_classifiers {
     }
   }
 }
+#</canBeDisabled>
+
 nonsense_classifiers {
   name: "hvm_no_speaker_dialogue"
   nonsense_classifier{
@@ -118,6 +143,7 @@ nonsense_classifiers {
     }
   }
 }
+#<canBeDisabled>
 nonsense_classifiers {
   name: "hvm_3seeds"
   nonsense_classifier{
@@ -158,3 +184,4 @@ nonsense_classifiers {
     }
   }
 }
+#</canBeDisabled>

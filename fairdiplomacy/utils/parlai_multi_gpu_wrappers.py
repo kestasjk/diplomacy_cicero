@@ -58,10 +58,17 @@ def load_wrapper_executor(
     load_model_on_main: bool,
     gpu_id: Optional[int] = None,
 ) -> ParlaiExecutor:
-    # >2 so that we don't run on devfair.
-    if (gpu_id is None and torch.cuda.device_count() > 2 and allow_multi_gpu) or (
+    # The gpu_id specified here isn't actually used, as factory.py sets the GPU
+    # id based on whether it's running a nonsense filter or not.
+    # It should work if there's only 1 GPU, and will work if there is more than 2 GPUs,
+    # but if there are more than 2 GPUs only the first 2 will be used, and this
+    # will need to be modified to support more than 2 GPUs.
+    # Hopefully in future the ~50GB VRAM needed will be affordable on a single GPU,
+    # so this won't be an issue.
+    if (gpu_id is None and torch.cuda.device_count() > 1 and allow_multi_gpu) or (
         gpu_id is not None and gpu_id < torch.cuda.device_count()
     ):
+        logging.info("load_wrapper_executor MultiProcessParlaiExecutor")
         return MultiProcessParlaiExecutor(
             parlai_model_cfg, model_factory, load_model_on_main, gpu_id
         )
@@ -102,6 +109,7 @@ class PseudoParlaiExecutor(ParlaiExecutor):
         return self._model.opt
 
 
+# this is called from plausible_order_sampling and from factory -> load_ensemble_nonsense_classifier_wrapper
 class MultiProcessParlaiExecutor(ParlaiExecutor):
     def __init__(
         self,
@@ -114,6 +122,10 @@ class MultiProcessParlaiExecutor(ParlaiExecutor):
         self.cfg = cfg
 
         if gpu_id is None:
+            # This branch will run within this process, but on a different GPU.
+            # I found that it wouldn't respect the set GPU, and that running in
+            # a different sub-process was more reliable, so this branch will
+            # only be used if there is only 1 GPU.
             assert torch.cuda.device_count() >= 2, torch.cuda.device_count()
             # Will not use GPU:0
             self._num_workers = torch.cuda.device_count() - 1
@@ -139,6 +151,15 @@ class MultiProcessParlaiExecutor(ParlaiExecutor):
             self._model_loading_fut = self._executor.submit(
                 _load_model_to_global_var, (cfg, gpu_id, model_factory)
             )
+            # Previously all the models were started and loaded in parallel, but 
+            # this causes lots of random issues; I got out of memory errors when there
+            # was plenty of memory, memory access errors, no CUDA GPUs found errors, etc,
+            # all at random. Presumably this is because the data being loaded in parallel
+            # causes lots of fragmentation etc, as it would give out of memory errors even with 
+            # 15/25GB of memory used.
+            # Instead we get the result here, which will block until the model is loaded,
+            # and allow the models to be loaded one by one, fitting into memory efficiently.
+            self._model_loading_fut.result()
 
         self._model = model_factory(cfg) if load_model_on_main else None
 
@@ -155,13 +176,24 @@ class MultiProcessParlaiExecutor(ParlaiExecutor):
         self, func_name: str, game: Optional[pydipcc.Game], *args, **kwargs
     ) -> concurrent.futures.Future:
         assert self.is_loaded()
-        return self._executor.submit(
+        # Resolve immidiately so that multiple scripts aren't all trying tp
+        # load data at the same time, which causes the sysm to crash in a way
+        # that is random.
+        future = self._executor.submit(
             _compute, func_name, game.to_json() if game is not None else None, *args, **kwargs,
         )
+        # If experiencing random CUDA errors uncomment this to ensure all CUDA calls
+        # are done sequentially. (Though it will slow down processing)
+        future.result()
+        return future
 
     def get(self, attr_name: str) -> concurrent.futures.Future:
         assert self.is_loaded()
-        return self._executor.submit(_get, attr_name)
+        future = self._executor.submit(_get, attr_name)
+        # If experiencing random CUDA errors uncomment this to ensure all CUDA calls
+        # are done sequentially. (Though it will slow down processing)
+        future.result()
+        return future
 
     def get_model(self) -> BaseWrapper:
         if self._model:
@@ -188,9 +220,16 @@ def _load_model_to_global_var(args):
     # To avoid this, we set CUDA_VISIBLE_DEVICES=gpu_id up front before torch.cuda
     # gets initialized. From the perspective of this process, there's just a single
     # GPU.
-    os.environ[_CUDA_VISIBLE_DEVICES] = str(gpu_id)
-    assert torch.cuda.device_count() == 1, gpu_id
-    heyhi.setup_logging(label=f"proc:{gpu_id}")
+
+    # Uncomment this and remove the force_gpu code in factory.py if you want to
+    # make the GPU choice be set at this point again.
+    # It was moved to factory.py to give more direct control over exactly which
+    # models got loaded onto which card, as there was a tight memory constraint
+    # that required some balancing for a 2x24GB GPU configuration.
+    #os.environ[_CUDA_VISIBLE_DEVICES] = str(gpu_id)
+    #assert torch.cuda.device_count() == 1, gpu_id
+
+    heyhi.setup_logging(label=f"pid:{os.getpid()}")
     _THE_MODEL = model_factory(parlai_model_cfg)
     assert isinstance(_THE_MODEL, BaseWrapper)
     logging.info(f"Process {os.getpid()} : Done loading")

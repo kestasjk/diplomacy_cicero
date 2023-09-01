@@ -13,7 +13,6 @@ from fairdiplomacy.timestamp import Timestamp
 import logging
 from typing import Dict, List, Tuple, Optional
 
-
 from parlai_diplomacy.utils.game2seq.factory import get_output_type
 import parlai_diplomacy.utils.loading as load
 import parlai_diplomacy.utils.misc as misc
@@ -890,8 +889,10 @@ class ParlAIAllOrderIndependentWrapper(BaseOrderWrapper):
         if two_powers_dialogue:
             metadata_copy["two_powers_dialogue"] = two_powers_dialogue
         seq = self.format_input_seq(game, view_of_power, target_power)
+        logging.debug(f"{seq}")
         self.metadata = metadata_copy
         many_raw_pred = self.get_model_pred_many(seq, num_preds, batch_size)
+        logging.debug(f"{many_raw_pred}")
         orders = [
             (tuple(self.format_output_seq(raw_pred)), score) for raw_pred, score in many_raw_pred
         ]

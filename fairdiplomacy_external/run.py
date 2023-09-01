@@ -8,7 +8,6 @@ import logging
 import os
 from typing import Dict
 import socket
-import torch
 import numpy as np
 
 from fairdiplomacy.agents import build_agent_from_cfg

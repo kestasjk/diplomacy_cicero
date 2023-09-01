@@ -108,10 +108,37 @@ from diplomacy.integration.webdiplomacy_net.orders import Order as WebdipOrder
 Some hard-coded global constants need to be set for this work. See fairdiplomacy/webdip/message_approval_cache_api.py.
 """
 
+logger = logging.getLogger("webdip")
+
 GameId = int
 DialogueState = Tuple[str, int]  # phase, num_messages
 API_PATH = "/api.php"
-WEBDIP_URL = "https://webdiplomacy.net/"
+if os.getenv("WEBDIP_URL") is None:
+    raise ValueError("WEBDIP_URL not set")
+WEBDIP_URL = os.getenv("WEBDIP_URL")
+logger.info(f"WEBDIP_URL: {WEBDIP_URL}")
+
+# If this is set sleep times will be ignored and messages will be sent as soon as they're generated
+# This results in a lot of text being generated, but is useful to measure how quickly the bot can run
+# and for testing
+FORCE_SENDING_IMMIDIATELY = False
+if os.getenv("FORCE_SENDING_IMMIDIATELY") is not None:
+    FORCE_SENDING_IMMIDIATELY = True
+logger.info(f"FORCE_SENDING_IMMIDIATELY: {FORCE_SENDING_IMMIDIATELY}")
+
+# If this is set messages will be sent to slack notifying there are messages for review.
+# Unlikely to be useful outside an academic / research context
+SLACK_MESSAGE_REVIEW_URL = None
+if os.getenv("SLACK_MESSAGE_REVIEW_URL") is not None:
+    SLACK_MESSAGE_REVIEW_URL = os.getenv("SLACK_MESSAGE_REVIEW_URL") # "http://localhost:8894/"
+logger.info(f"SLACK_MESSAGE_REVIEW_URL: {SLACK_MESSAGE_REVIEW_URL}")
+
+if os.getenv("CUDA_VISIBLE_DEVICES") is None:
+    logger.warning("CUDA_VISIBLE_DEVICES not set. This may cause issues with GPU memory. For a 2 GPU setup 0,1 is expected.")
+elif os.getenv("CUDA_VISIBLE_DEVICES") != "0,1":
+    logger.warning("CUDA_VISIBLE_DEVICES is set to something other than 0,1. This may cause issues with GPU memory. For a 2 GPU setup 0,1 is expected; you may experience memory issues if running a full press bot.")
+else:
+    logger.info("CUDA_VISIBLE_DEVICES is set to 0,1. Expecting to run on 2 GPUs.")
 
 GLOBAL_CHAT_COUNTRY_ID = 0
 STATUS_ROUTE = "game/status"
@@ -120,8 +147,6 @@ ACTIVE_GAMES_ROUTE = "players/active_games"
 POST_ORDERS_ROUTE = "game/orders"
 SEND_MESSAGE_ROUTE = "game/sendmessage"
 VOTE_ROUTE = "game/togglevote"
-
-logger = logging.getLogger("webdip")
 
 GAME_NOT_FOUND_RESP = b"<html><head><title>webDiplomacy fatal error</title></head>\r\n\t\t\t\t<body><p>Error occurred during script startup, usually a result of inability to connect to the database:</p>\r\n\t\t\t\t<p>Game not found, or has an invalid variant set; ensure a valid game ID has been given. Check that this game hasn't been canceled, you may have received a message about it on your <a href='index.php' class='light'>home page</a>.</p></body></html>"
 ACCESS_DENIED_RESP = b"Access to this page denied for your account type."
@@ -1023,13 +1048,24 @@ class WebdipBotWrapper:
 
     def check_wakeup(self, ctx: Context):
         wakeup_time = self.dialogue_wakeup_times.get(ctx)
+        logging.debug("Wakeup times")
+        for ctx_i in self.dialogue_wakeup_times.keys():
+            logging.debug(
+                f"ctx_i={ctx_i}, wakeup_time={self.dialogue_wakeup_times.get(ctx_i)}, now={Timestamp.now()}, wakeup_mins={(self.dialogue_wakeup_times.get(ctx_i)-Timestamp.now())/60.0}"
+            )
+
         if wakeup_time is None:
+            logging.debug("No wakeup time")
             return False
         time_until_wakeup = max(Timestamp.from_seconds(0), wakeup_time - Timestamp.now())
         logging.info(
             f"{ctx} will wakeup in {time_until_wakeup} ; reserving {self.estimated_msg_generation_time} for message generation"
         )
-        return time_until_wakeup <= self.estimated_msg_generation_time
+
+        if FORCE_SENDING_IMMIDIATELY:
+            return True
+        else:
+            return time_until_wakeup <= self.estimated_msg_generation_time
 
     def get_message_history_length(self, ctx: Context, game: Game,) -> int:
         all_timestamps = [
@@ -1234,6 +1270,9 @@ class WebdipBotWrapper:
             message_heuristic_result = player.agent.postprocess_sleep_heuristics_should_trigger(
                 msgs[0], game, player.state
             )
+            
+            if FORCE_SENDING_IMMIDIATELY:
+                message_heuristic_result = MessageHeuristicResult.FORCE
             if message_heuristic_result == MessageHeuristicResult.FORCE:
                 logging.info(f"Postprocess sleep heuristics triggered FORCE for {msgs[0]}")
                 wakeup_time = timestamp_for_conditioning
@@ -1247,12 +1286,13 @@ class WebdipBotWrapper:
                 msgs[0],
             )
 
-        game_url = f"http://localhost:8894/message_review?cur_game={game_fp}"
-        if "webdiplomacy.net" in self.cfg.webdip_url:
-            send_slack_message(
-                "message-review-notifications",
-                f"New message to review for game ID {ctx.gameID}, country {PRESS_COUNTRY_ID_TO_POWER[ctx.countryID]} <{game_url}|here>.",
-            )
+        if SLACK_MESSAGE_REVIEW_URL is not None:
+            game_url = f"{SLACK_MESSAGE_REVIEW_URL}message_review?cur_game={game_fp}"
+            if "webdiplomacy.net" in self.cfg.webdip_url:
+                send_slack_message(
+                    "message-review-notifications",
+                    f"New message to review for game ID {ctx.gameID}, country {PRESS_COUNTRY_ID_TO_POWER[ctx.countryID]} <{game_url}|here>.",
+                )
 
         message_review_data: MessageReviewData = {
             "id": gen_id(),
@@ -1292,6 +1332,9 @@ class WebdipBotWrapper:
 
         # if sleep time is not inf, we don't want to update the message time until an action is taken
         if sleep_time == INF_SLEEP_TIME:
+            logging.debug(
+                f"Sleep time is inf, setting last successful message time to now"
+            )
             self.last_successful_message_time[ctx] = Timestamp.now()
 
         set_message_review(
@@ -1316,10 +1359,12 @@ class WebdipBotWrapper:
             logging.info(
                 f"Parallel recipient '{self.cfg.recipient}' is not in the list of alive powers for this game: {cur_game.get_alive_powers()}. Skipping servicing this recipient."
             )
+            logging.debug("Recipient is not alive")
             return False
 
         # Recompute messages when state has changed.
         if self.has_state_changed(ctx, cur_game):
+            logging.debug("has_state_changed = true")
             return True
 
         game_fp = str(construct_game_fp(self.game_dir, ctx, PRESS_COUNTRY_ID_TO_POWER))
@@ -1327,6 +1372,7 @@ class WebdipBotWrapper:
 
         if not message_review:
             # Need to regenerate a message review
+            logging.debug("No message review")
             return True
 
         if message_review["short_phase"] != cur_game.current_short_phase:
@@ -1340,6 +1386,7 @@ class WebdipBotWrapper:
                 self.get_last_timestamp_or_zero(game_fp, cur_game)
                 != message_review["last_timestamp_when_produced"]
             ):
+                logging.debug("get_last_timestamp_or_zero != last_timestamp_when_produced ?")
                 return True
 
         # Re-gen when proposal marked as stale
@@ -1357,6 +1404,7 @@ class WebdipBotWrapper:
 
         if message_review["msg_proposals"][0]["approval_status"] == ApprovalStatus.REJECTED:
             # Need to regenerate a message review when a message is rejected
+            logging.debug("Regenerate due to rejection")
             return True
         elif self.check_wakeup(ctx) and (
             message_review["msg_proposals"][0]["approval_status"] == ApprovalStatus.APPROVED
@@ -1365,11 +1413,17 @@ class WebdipBotWrapper:
                 and message_review["msg_proposals"][0]["target_power"] != message_review["power"]
             )
         ):
+            logging.debug("Message approved, or no approval needed and target is not self")
             # Need to send message when bot has woken up and message has been approved
             return True
         elif message_review["msg_proposals"][0]["approval_status"] == ApprovalStatus.FORCE_SEND:
+            logging.debug("Force send")
             return True
         else:
+            if self.check_wakeup(ctx):
+                logging.debug("Can't send message, check_wakeup is true")
+            else:
+                logging.debug("Can't send message, check_wakeup is false")
             return False
 
     @retry_on_connection_error
