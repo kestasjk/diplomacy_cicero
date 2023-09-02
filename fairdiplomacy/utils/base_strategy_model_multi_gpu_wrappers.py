@@ -34,14 +34,12 @@ class MultiProcessBaseStrategyModelExecutor:
     ):
         assert _THE_MODEL is None, "Expected the model to be non-loaded in the main process"
         self.base_strategy_model_wrapper_kwargs = base_strategy_model_wrapper_kwargs
-        if allow_multi_gpu and torch.cuda.device_count() > 1:
+        if allow_multi_gpu and torch.cuda.device_count() > 2:
             # This code was written to allow the strategy model to run on multiple GPUs.
             # When running on two GPUs we want to run the strategy model on GPU 0, and the 
             # nonsense filters on GPU 1. The code that actually does this split is in factory.py.
-            if torch.cuda.device_count() > 2:
-                logging.warning(
-                    "Running on more than 2 GPUs. This is likely to be incompatible with the factory.py code which balances the models on two GPUs."
-                )
+            # If there is only 2 GPUs then this will ust create a new process which will create
+            # another CUDA ~700MB overhead, so for <3 GPUs avoid this path
 
             self._num_workers = torch.cuda.device_count() - 1
             logging.info("Buillding MultiProcessParlaiExecutor for %d devices", self._num_workers)
@@ -54,7 +52,7 @@ class MultiProcessBaseStrategyModelExecutor:
                     (
                         base_strategy_model_wrapper_kwargs,
                         base_strategy_model_rollouts_kwargs,
-                        0 if i == 0 else i + 1, # This GPU number isn't actually used; factory.py will set the GPU based on the model being loaded
+                        i + 1,
                     )
                     for i in range(self._num_workers)
                 ],

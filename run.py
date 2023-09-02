@@ -25,11 +25,11 @@ import heyhi
 
 # PyTorch has a memory cache / allocation layer to make deallocations faster .. unfortunately it also causes
 # "out of memory" errors that make no sense, and makes debugging memory use very difficult
-print("Setting PYTORCH_NO_CUDA_MEMORY_CACHING = 1 to prevent unnecessary out of memory errors")
-os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
+#print("Setting PYTORCH_NO_CUDA_MEMORY_CACHING = 1 to prevent unnecessary out of memory errors")
+#os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
 # This makes debugging easier as errors will happen when they occur
-print("Setting CUDA_LAUNCH_BLOCKING = 1 to ensure errors appear when they occur")
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+#print("Setting CUDA_LAUNCH_BLOCKING = 1 to ensure errors appear when they occur")
+#os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 TASKS = {}
 

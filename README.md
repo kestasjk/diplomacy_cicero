@@ -9,8 +9,10 @@ This is a fork of the facebookresearch repo, tweaked and with documentation orie
   Other than some sleep parameters which affects how often messages get sent, and the batch size for order generation that 
   trades GPU memory for speed, the configuration should be the same.
 
-- I suspect there is a fair bit of wasted GPU memory due to a separate process being started for each nonsense filter, as each
-  process apparently has an overhead.
+- The nonsense filter models use ~15GB, but don't use much extra memory when being run, but the other strategy/generation models
+  use ~13GB, but use significantly more memory when they are run, going from 13 to 20+. The most stable approach was to run the 
+  nonsense filters on the main GPU that runs the GUI/display and runs other things, and to run strategy/generation on the second 
+  GPU, which can be dedicated to that purpose and so has plenty of room to use extra memory.
 
 - Don't waste time trying to get a full press bot running in WSL; it can be made to work, but when it gets anywhere near to full
   memory utilization all sorts of strange errors occur; no CUDA devices available, out of memory with GB of memory left.

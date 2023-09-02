@@ -67,22 +67,22 @@ bqre1p {
       }
 
       dialogue {
-        pseudo_orders_correspondence_threshold: -5e-3
-        rating_threshold_first_message: 1.0 # 1.0 means disabled
+        pseudo_orders_correspondence_threshold: -5e-2 # -5e-3
+        rating_threshold_first_message: 0.5 # 1.0 means disabled
         use_pseudoorders_initiate_sleep_heuristic: false
         grounding_last_playable_year: 1938
         initial_message_prompts_path: "models/markus_5m_prompts.json"
         block_initiation_if_pred_value_below: 0.01
         use_last_phase_silence_except_coordination_heuristic: true
         
-#        sleep_inf_threshold: 0.05
-#        sleep_inf_threshold_reply: 0.375
-#        # Reply quickly after phase change if true
-#        initiate_sleep_heuristic_every_phase: false
-#        initial_message_prompts_count: 1
-#        initial_message_prompt_spacing_seconds: 120
-#        binarize_sleep_times_in_5m_games: false
-#        limit_consecutive_outbound_messages: 1
+        sleep_inf_threshold: 0.1
+        sleep_inf_threshold_reply: 0.7
+        # Reply quickly after phase change if true
+        initiate_sleep_heuristic_every_phase: true
+        initial_message_prompts_count: 1
+        initial_message_prompt_spacing_seconds: 120
+        binarize_sleep_times_in_5m_games: false
+        limit_consecutive_outbound_messages: 1
       }
     }
     player_types {

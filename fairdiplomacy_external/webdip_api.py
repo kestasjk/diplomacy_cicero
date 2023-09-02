@@ -1044,7 +1044,7 @@ class WebdipBotWrapper:
         logging.debug("Wakeup times")
         for ctx_i in self.dialogue_wakeup_times.keys():
             logging.debug(
-                f"ctx_i={ctx_i}, wakeup_time={self.dialogue_wakeup_times.get(ctx_i)}, now={Timestamp.now()}, wakeup_mins={(self.dialogue_wakeup_times.get(ctx_i)-Timestamp.now())/60.0}"
+                f"ctx_i={ctx_i}, wakeup_time={self.dialogue_wakeup_times.get(ctx_i)}, now={Timestamp.now()}, wakeup_mins={(self.dialogue_wakeup_times.get(ctx_i)-Timestamp.now()).to_seconds_float() /60.0}"
             )
 
         if wakeup_time is None:
@@ -1975,6 +1975,7 @@ def _play_webdip_without_retries(cfg: conf_cfgs.PlayWebdipTask, agent: BaseAgent
         # If there was nothing to do last cycle wait a bit before the next request to avoid flooding the server
         if not last_cycle_processed:
             time.sleep(5)
+        else:
             last_cycle_processed = False
         
         # Keep-alive for restarting bots

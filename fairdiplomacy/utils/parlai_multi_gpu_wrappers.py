@@ -167,7 +167,7 @@ class MultiProcessParlaiExecutor(ParlaiExecutor):
         )
         # If experiencing random CUDA errors uncomment this to ensure all CUDA calls
         # are done sequentially. (Though it will slow down processing)
-        future.result()
+        #future.result()
         return future
 
     def get(self, attr_name: str) -> concurrent.futures.Future:
@@ -175,7 +175,7 @@ class MultiProcessParlaiExecutor(ParlaiExecutor):
         future = self._executor.submit(_get, attr_name)
         # If experiencing random CUDA errors uncomment this to ensure all CUDA calls
         # are done sequentially. (Though it will slow down processing)
-        future.result()
+        #future.result()
         return future
 
     def get_model(self) -> BaseWrapper:
@@ -223,7 +223,7 @@ class SecondProcessParlaiExecutor(ParlaiExecutor):
             _load_model_to_global_var_dict, (key, cfg, 1, model_factory)
         )
 
-        self._model_loading_fut.result() # Load synchronously for debugging
+        #self._model_loading_fut.result() # Load synchronously for debugging
 
         if load_model_on_main:
             logging.warn("load_model_on_main is true on the second GPU, that's probably wrong")
@@ -251,7 +251,7 @@ class SecondProcessParlaiExecutor(ParlaiExecutor):
         )
         # If experiencing random CUDA errors uncomment this to ensure all CUDA calls
         # are done sequentially. (Though it will slow down processing)
-        future.result()
+        #future.result()
         return future
 
     def get(self, attr_name: str) -> concurrent.futures.Future:
@@ -259,7 +259,7 @@ class SecondProcessParlaiExecutor(ParlaiExecutor):
         future = _THE_SECOND_EXECUTOR.submit(_get_dict, self.key, attr_name)
         # If experiencing random CUDA errors uncomment this to ensure all CUDA calls
         # are done sequentially. (Though it will slow down processing)
-        future.result()
+        #future.result()
         return future
 
     def get_model(self) -> BaseWrapper:
@@ -307,9 +307,9 @@ def _start_process_dict():
     
     # PyTorch has a memory cache / allocation layer to make deallocations faster .. unfortunately it also causes
     # "out of memory" errors that make no sense, and makes debugging memory use very difficult
-    os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
+    #os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
     # This makes debugging easier as errors will happen when they occur
-    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    #os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
     os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id
     
@@ -317,7 +317,6 @@ def _start_process_dict():
     while not loaded:
         try:
             torch.cuda.set_device("cuda:0") # the above changes the device to be 0
-            torch.cuda.empty_cache()
             cur_device = torch.zeros(1).to("cuda").device
             cur_available = torch.cuda.is_available()
             logging.info(f"Device: {cur_device}, Available: {cur_available}")
@@ -363,7 +362,6 @@ def _compute(func_name: str, game_json: Optional[str], *args, **kwargs):
     else:
         result = func(*args, **kwargs)
 
-    torch.cuda.empty_cache()
     return result
 
 def _compute_dict(key: str, func_name: str, game_json: Optional[str], *args, **kwargs):
@@ -377,7 +375,6 @@ def _compute_dict(key: str, func_name: str, game_json: Optional[str], *args, **k
     else:
         result = func(*args, **kwargs)
 
-    torch.cuda.empty_cache()
     return result
 
 def _get(attr_name: str):
