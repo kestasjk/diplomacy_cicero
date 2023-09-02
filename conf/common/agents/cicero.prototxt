@@ -31,9 +31,13 @@ bqre1p {
         do_parlai_rescoring: true
         n_rescore: 30
         parlai_req_size: 30
-        parlai_batch_size: 30 #30
+        parlai_batch_size: 15 #30
+        # The batch sizes used here only affect how many batches the req_size are processesed 
+        # over, so these can be reduced without affecting the quality of the messages generated
+        # but these have a big effect on GPU memory use (and even when reduced significantly it 
+        # is still reasonably fast)
         n_plausible_orders: 35
-        batch_size: 512 # 512
+        batch_size: 32 # 512 (the default request size is 1024)
         allow_multi_gpu: 1
         exclude_n_holds: 3
       }

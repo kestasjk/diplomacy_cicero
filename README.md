@@ -3,10 +3,81 @@
 This is a fork of the facebookresearch repo, tweaked and with documentation oriented towards running the AI bots against a webDiplomacy installation.
 
 ## Notes
-* Running on Ubuntu 20.04
-* Make sure you are running using the nvidia driver, install via Settings > About > Software > Additional drivers. I used driver version 510 with a 2080, 525 didn't work with Wayland.
-* Installing numba via pip as below will make numba try and install numpy 1.24 which isn't compatible with Python 3.7. Be sure to upgrade pip 19 to the latest version.
-* Install VS Code, docker, the VS Code Docker extensions, get the webDiplomacy.net repo and run the Dockerfile. This will allow testing of the AI against a local installation.
+- To run the full press / CICERO bot I used 2 NVidia 4090 24GB VRAM with 128GB RAM, and the code is tuned for this setup.
+  In order to run full press with a single GPU the simplest approach is to remove nonsense filters, see 
+  conf/common/agents/dialogue/nonsense_classifiers/20220728_ensemble_nonsense_classifier_speedpress_trial2_90recall.prototxt
+  Other than some sleep parameters which affects how often messages get sent, and the batch size for order generation that 
+  trades GPU memory for speed, the configuration should be the same.
+
+- I suspect there is a fair bit of wasted GPU memory due to a separate process being started for each nonsense filter, as each
+  process apparently has an overhead.
+
+- Don't waste time trying to get a full press bot running in WSL; it can be made to work, but when it gets anywhere near to full
+  memory utilization all sorts of strange errors occur; no CUDA devices available, out of memory with GB of memory left.
+  I moved the final configuration to a native install to be able to run the NSight GPU profiler to find out why it was failing
+  randomly after much troubleshooting / debugging and it worked completely fine.
+
+## Installation on Ubuntu 22.04:
+```
+sudo bash
+apt install nvidia-utils-525
+apt install nvidia-driver-525
+apt install nvidia-cuda-toolkit # 11.5 at time of writing
+apt install -y wget bzip2 ca-certificates curl git build-essential wget cmake build-essential autoconf libtool pkg-config libgoogle-glog-dev
+apt install clang-format
+apt install redis-server
+service redis-server start
+systemctl enable redis-server.service
+redis-cli -n 1 set message_review_version 1
+exit
+
+mkdir -p ~/miniconda3
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
+~/miniconda3/bin/conda init bash
+~/miniconda3/bin/conda init zsh
+# Restart terminal
+conda create --yes -n diplomacy_cicero python=3.7
+conda activate diplomacy_cicero
+# This being 11.0 doesn't seem to cause any problems
+conda install --yes pytorch=1.7.1 torchvision cudatoolkit=11.0 -c pytorch
+conda install --yes pybind11
+
+# Install go for boringssl in grpc
+# We have some hacky patching code for protobuf that is not guaranteed
+# to work on versions other than this.
+conda install --yes go protobuf=3.19.1
+
+# Install python requirements
+pip install -r requirements.txt
+pip install diplomacy
+
+# Local pip installs
+pip install -e ./thirdparty/github/fairinternal/postman/nest/
+apt install nvidia-cudnn # postman reports this missing during install
+pip install -e ./thirdparty/github/fairinternal/postman/postman/
+# This gets to 90+% then errors with     
+# /home/kestasjk/Desktop/webdiplomacy_bots/thirdparty/github/fairinternal/postman/postman/../nest/nest/nest.h:304:28: error: ‘invalid_argument’ is not a member of ‘std’
+#      304 |                 throw std::invalid_argument(
+# But this doesn't seem to matter
+
+# This also has some errors, which also don't seem to matter
+pip install -e . -vv
+# The errors may be related to slurm / message review functionality, or testing/profiling code
+make
+
+# Set these to match your own installation:
+export WEBDIP_URL="https://webdiplomacy.net/"
+
+# Run France vs Austria:
+export FAIRBOT_APIKEY="xyz"
+bash runWebDip_2player_DORA_FvA.py
+
+# Run full press:
+export DIPGPT_APIKEY="xyz"
+bash runWebDip_Live_CICERO.py
+
+```
 
 Below is the original readme information:
 
