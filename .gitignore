@@ -42,3 +42,5 @@ dipcc/detect_cuda_version.cc
 node_modules/
 models/
 dipcc/build/
+logs/*
+models/*
