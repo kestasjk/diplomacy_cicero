@@ -187,7 +187,7 @@ class ParlAISleepClassifierWrapper(BaseClassifierWrapper):
         *,
         inf_threshold: float = 0,
     ) -> Timestamp:
-        return Timestamp.from_seconds(20)
+        # return Timestamp.from_seconds(20)
         if "sleepsix" in self.opt["task"]:
             assert target_power is not None
             return self.get_sleepsix_times(
@@ -804,7 +804,6 @@ class EnsembleNonsenseClassifierWrapper:
 
         classifiers_outputs: Dict[str, Dict[str, float]] = {}
         
-        # Something around here keeps causing an infinite loop in the GPU
         logging.debug(f"get_verbose_nonsense_status")
 
         async_model_calls = {}

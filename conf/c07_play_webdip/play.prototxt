@@ -1,6 +1,5 @@
 includes {path: "agents/cicero.prototxt"; mount: "agent";}
 play_webdip {
-	variant_id: 15,
-	ready_immediately: true,
+	variant_id: 1,
 	webdip_url: "https://webdiplomacy.net/"
 }

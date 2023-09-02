@@ -1,1 +1,0 @@
-python fairdiplomacy_external/run.py --adhoc -c conf/c07_play_webdip/play_classic.prototxt    api_key='bot1'    account_name='Kestas Bot'    allow_dialogue=false    log_dir=/home/kestasjk/fair/logs/    is_backup=false    retry_exception_attempts=10    reset_bad_games=1    I.agent=agents/searchbot_fast.prototxt

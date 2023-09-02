@@ -1,5 +1,0 @@
-includes {path: "agents/searchbot.prototxt"; mount: "agent";}
-play_webdip {
-	variant_id: 1,
-	webdip_url: "http://192.168.0.100:43000/"
-}

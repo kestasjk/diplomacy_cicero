@@ -18,13 +18,13 @@ bqre1p {
       }
 
       rollouts_cfg {
-          year_spring_prob_of_ending: "1901,0.0;1919,1.0"
+          year_spring_prob_of_ending: "1901,0.0;1939,1.0"
       }
 
       message_search {
-        n_messages: 4
+        n_messages: 8
         strategy: FILTER
-        filter_top_k: 3
+        filter_top_k: 5
       }
 
       plausible_orders_cfg {
@@ -67,7 +67,7 @@ bqre1p {
       }
 
       dialogue {
-        pseudo_orders_correspondence_threshold: 0.01 # -5e-3
+        pseudo_orders_correspondence_threshold: -5e-3
         rating_threshold_first_message: 1.0 # 1.0 means disabled
         use_pseudoorders_initiate_sleep_heuristic: false
         grounding_last_playable_year: 1938

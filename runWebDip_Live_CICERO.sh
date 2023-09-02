@@ -9,10 +9,10 @@ echo "Activating"
 conda activate diplomacy_cicero
 
 python fairdiplomacy_external/run.py --adhoc \
-    -c conf/c07_play_webdip/cicero_live.prototxt \
+    -c conf/c07_play_webdip/play.prototxt \
     api_key=$DIPGPT_APIKEY account_name='dipgpt' \
     allow_dialogue=true \
-    log_dir=/home/kestasjk/fair/logs/ \
+    log_dir=logs/ \
     is_backup=false \
     retry_exception_attempts=0 \
     reset_bad_games=1 \

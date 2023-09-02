@@ -184,7 +184,7 @@ class MultiProcessParlaiExecutor(ParlaiExecutor):
         )
         # If experiencing random CUDA errors uncomment this to ensure all CUDA calls
         # are done sequentially. (Though it will slow down processing)
-        future.result()
+        #future.result()
         return future
 
     def get(self, attr_name: str) -> concurrent.futures.Future:
@@ -192,7 +192,7 @@ class MultiProcessParlaiExecutor(ParlaiExecutor):
         future = self._executor.submit(_get, attr_name)
         # If experiencing random CUDA errors uncomment this to ensure all CUDA calls
         # are done sequentially. (Though it will slow down processing)
-        future.result()
+        #future.result()
         return future
 
     def get_model(self) -> BaseWrapper:

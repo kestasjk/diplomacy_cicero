@@ -13,7 +13,7 @@ python fairdiplomacy_external/run.py \
 	api_key=$FAIRBOT_APIKEY \
 	account_name=FairBot2 \
 	allow_dialogue=false \
-	log_dir=/home/kestasjk/fair/logs/ \
+	log_dir=logs/ \
 	is_backup=false \
 	retry_exception_attempts=1 \
 	reset_bad_games=1 \
