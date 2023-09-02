@@ -172,13 +172,16 @@ def get_message_review(game_fp: str, db: Optional[int] = None) -> Optional[Messa
         if message_proposal_metadata.get("annotator", "") != "":
             if len(game_fp.split(":")) > 1:
                 game_fp = game_fp.split(":")[1]
-            with open(game_fp, "r") as f:
-                game = pydipcc.Game.from_json(f.read())
-            annotations_out_name = pathlib.Path(
-                str(game_fp).rsplit(".", 1)[0] + "_REDIS.metann.jsonl"
-            )
-            annotator = MetaAnnotator(game, annotations_out_name, silent=True)
-            annotator.load_state_dict(json.loads(message_proposal_metadata["annotator"]))
+            try:
+                with open(game_fp, "r") as f:
+                    game = pydipcc.Game.from_json(f.read())
+                annotations_out_name = pathlib.Path(
+                    str(game_fp).rsplit(".", 1)[0] + "_REDIS.metann.jsonl"
+                )
+                annotator = MetaAnnotator(game, annotations_out_name, silent=True)
+                annotator.load_state_dict(json.loads(message_proposal_metadata["annotator"]))
+            except FileNotFoundError as e:
+                logging.error(f"Failed to load annotator for game_fp {game_fp} due to file not found") # Didn't create log directory, should remove thisFileNotFoundError: [Errno 2] No such file or directory: 'logs/games/game_107233522_ENGLAND.json'
 
         res: MessageReviewData = {
             "id": int(message_proposal_metadata["id"]),

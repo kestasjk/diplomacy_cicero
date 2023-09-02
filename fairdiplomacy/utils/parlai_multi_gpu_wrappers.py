@@ -25,6 +25,9 @@ _THE_MODEL = None
 _CUDA_VISIBLE_DEVICES = "CUDA_VISIBLE_DEVICES"
 CACHE_SIZE = 32  # we have lots of nonsense classifiers that each run in their own executor
 
+# Used when running on a second process
+_THE_MODELS = {}
+_THE_SECOND_EXECUTOR = None
 
 class ParlaiExecutor(abc.ABC):
     @abc.abstractmethod
@@ -45,27 +48,22 @@ class ParlaiExecutor(abc.ABC):
     def get_model(self) -> BaseWrapper:
         pass
 
-    @abc.abstractmethod
-    def get_model_opt(self) -> Dict:
-        pass
-
-
+# This function will load a model into a different process to run on a different GPU
+# Called by plausible_order_sampling PlausibleOrderSampler, to run the same model on multiple GPUs, if the gpu_id isn't set,
+# or called by nonsense_ensembe, to run different models on different GPUs, if a gpu_id is set
 @functools.lru_cache(maxsize=CACHE_SIZE)
 def load_wrapper_executor(
     parlai_model_cfg: conf_cfgs.ParlaiModel,
     model_factory: Callable[[conf_cfgs.ParlaiModel], BaseWrapper],
     allow_multi_gpu: bool,
     load_model_on_main: bool,
+    key: str,
     gpu_id: Optional[int] = None,
 ) -> ParlaiExecutor:
-    # The gpu_id specified here isn't actually used, as factory.py sets the GPU
-    # id based on whether it's running a nonsense filter or not.
-    # It should work if there's only 1 GPU, and will work if there is more than 2 GPUs,
-    # but if there are more than 2 GPUs only the first 2 will be used, and this
-    # will need to be modified to support more than 2 GPUs.
-    # Hopefully in future the ~50GB VRAM needed will be affordable on a single GPU,
-    # so this won't be an issue.
-    if (gpu_id is None and torch.cuda.device_count() > 1 and allow_multi_gpu) or (
+    if allow_multi_gpu and (torch.cuda.device_count() == 2 or os.getenv("SECOND_GPU") is not None) and (gpu_id is None or gpu_id > 0) and not load_model_on_main:
+        logging.info(f"load_wrapper_executor SecondProcessParlaiExecutor {key}")
+        return SecondProcessParlaiExecutor(parlai_model_cfg, model_factory, load_model_on_main, key)
+    elif (gpu_id is None and torch.cuda.device_count() > 2 and allow_multi_gpu) or (
         gpu_id is not None and gpu_id < torch.cuda.device_count()
     ):
         logging.info("load_wrapper_executor MultiProcessParlaiExecutor")
@@ -105,10 +103,6 @@ class PseudoParlaiExecutor(ParlaiExecutor):
     def get_model(self) -> BaseWrapper:
         return self._model
 
-    def get_model_opt(self) -> Dict:
-        return self._model.opt
-
-
 # this is called from plausible_order_sampling and from factory -> load_ensemble_nonsense_classifier_wrapper
 class MultiProcessParlaiExecutor(ParlaiExecutor):
     def __init__(
@@ -122,10 +116,7 @@ class MultiProcessParlaiExecutor(ParlaiExecutor):
         self.cfg = cfg
 
         if gpu_id is None:
-            # This branch will run within this process, but on a different GPU.
-            # I found that it wouldn't respect the set GPU, and that running in
-            # a different sub-process was more reliable, so this branch will
-            # only be used if there is only 1 GPU.
+            # This loads the same model on multiple GPUs and executes immidiately, used for the plausible order sampler
             assert torch.cuda.device_count() >= 2, torch.cuda.device_count()
             # Will not use GPU:0
             self._num_workers = torch.cuda.device_count() - 1
@@ -140,6 +131,7 @@ class MultiProcessParlaiExecutor(ParlaiExecutor):
                 pass
             self._model_loading_fut = None
         else:
+            # This loads one model on a specified GPU and executes lazily, used for the 16 nonsense models
             assert gpu_id < torch.cuda.device_count(), (gpu_id, torch.cuda.device_count())
             self._num_workers = 1
             logging.info(
@@ -151,15 +143,6 @@ class MultiProcessParlaiExecutor(ParlaiExecutor):
             self._model_loading_fut = self._executor.submit(
                 _load_model_to_global_var, (cfg, gpu_id, model_factory)
             )
-            # Previously all the models were started and loaded in parallel, but 
-            # this causes lots of random issues; I got out of memory errors when there
-            # was plenty of memory, memory access errors, no CUDA GPUs found errors, etc,
-            # all at random. Presumably this is because the data being loaded in parallel
-            # causes lots of fragmentation etc, as it would give out of memory errors even with 
-            # 15/25GB of memory used.
-            # Instead we get the result here, which will block until the model is loaded,
-            # and allow the models to be loaded one by one, fitting into memory efficiently.
-            self._model_loading_fut.result()
 
         self._model = model_factory(cfg) if load_model_on_main else None
 
@@ -184,7 +167,7 @@ class MultiProcessParlaiExecutor(ParlaiExecutor):
         )
         # If experiencing random CUDA errors uncomment this to ensure all CUDA calls
         # are done sequentially. (Though it will slow down processing)
-        #future.result()
+        future.result()
         return future
 
     def get(self, attr_name: str) -> concurrent.futures.Future:
@@ -192,7 +175,7 @@ class MultiProcessParlaiExecutor(ParlaiExecutor):
         future = self._executor.submit(_get, attr_name)
         # If experiencing random CUDA errors uncomment this to ensure all CUDA calls
         # are done sequentially. (Though it will slow down processing)
-        #future.result()
+        future.result()
         return future
 
     def get_model(self) -> BaseWrapper:
@@ -201,15 +184,96 @@ class MultiProcessParlaiExecutor(ParlaiExecutor):
         else:
             return self._executor.submit(get_global_model).result()
 
-    def get_model_opt(self) -> Dict:
-        if self._model:
-            return self._model.opt
-        else:
-            return self.get("opt").result()
-
     def __del__(self):
         print("Sunsetting the process pool for", self.cfg)
         self._executor.shutdown()
+
+
+# Like MultiProcess, but runs everything in one other single process on another GPU, instead of running a process for each 
+# model.
+# Internally multiple of these refer to a single executor which runs all the models, using a dictionary of models.
+# This is done because using a new process for each nonsense filter adds ~700MB/filter, almost doubling the memory requirements
+# for 16 filters. With 2 GPUs there should only be 2 processes
+class SecondProcessParlaiExecutor(ParlaiExecutor):
+    def __init__(
+        self,
+        cfg: conf_cfgs.ParlaiModel,
+        model_factory: Callable[[conf_cfgs.ParlaiModel], BaseWrapper],
+        load_model_on_main: bool,
+        key: str,
+    ):
+        global _THE_SECOND_EXECUTOR
+
+        if _THE_SECOND_EXECUTOR is None:
+            logging.info("Starting the second process executor with first model {key}")
+            _THE_SECOND_EXECUTOR = concurrent.futures.ProcessPoolExecutor(
+                max_workers=1, mp_context=mp,
+            )
+            _THE_SECOND_EXECUTOR.submit(
+                _start_process_dict
+            ).result()
+            logging.info("Started the second process executor")
+        else:
+            logging.info("Second process is already started, loading new model {key} onto it")
+        
+        self.cfg = cfg
+        self.key = key
+
+        self._model_loading_fut = _THE_SECOND_EXECUTOR.submit(
+            _load_model_to_global_var_dict, (key, cfg, 1, model_factory)
+        )
+
+        self._model_loading_fut.result() # Load synchronously for debugging
+
+        if load_model_on_main:
+            logging.warn("load_model_on_main is true on the second GPU, that's probably wrong")
+        
+        self._model = model_factory(cfg) if load_model_on_main else None
+
+    def is_loaded(self) -> bool:
+        if self._model_loading_fut is None:
+            # This means that the subprocesses were waited on inside the constructor
+            return True
+
+        # If there is a future, wait for it.
+        self._model_loading_fut.result()
+        return True
+
+    def compute(
+        self, func_name: str, game: Optional[pydipcc.Game], *args, **kwargs
+    ) -> concurrent.futures.Future:
+        global _THE_SECOND_EXECUTOR
+        # Resolve immidiately so that multiple scripts aren't all trying tp
+        # load data at the same time, which causes the sysm to crash in a way
+        # that is random.
+        future = _THE_SECOND_EXECUTOR.submit(
+            _compute_dict, self.key, func_name, game.to_json() if game is not None else None, *args, **kwargs,
+        )
+        # If experiencing random CUDA errors uncomment this to ensure all CUDA calls
+        # are done sequentially. (Though it will slow down processing)
+        future.result()
+        return future
+
+    def get(self, attr_name: str) -> concurrent.futures.Future:
+        global _THE_SECOND_EXECUTOR
+        future = _THE_SECOND_EXECUTOR.submit(_get_dict, self.key, attr_name)
+        # If experiencing random CUDA errors uncomment this to ensure all CUDA calls
+        # are done sequentially. (Though it will slow down processing)
+        future.result()
+        return future
+
+    def get_model(self) -> BaseWrapper:
+        global _THE_SECOND_EXECUTOR
+        logging.warn(f"get_model called to get model for {self.key}")
+        return _THE_SECOND_EXECUTOR.submit(get_global_model_dict, self.key).result()
+
+    def __del__(self):
+        global _THE_SECOND_EXECUTOR
+        if _THE_SECOND_EXECUTOR is not None:
+            print("Sunsetting the second executor for ", self.key)
+            _THE_SECOND_EXECUTOR.shutdown()
+        else:
+            print("Already shut down second executor ", self.key)
 
 
 def _load_model_to_global_var(args):
@@ -221,18 +285,61 @@ def _load_model_to_global_var(args):
     # gets initialized. From the perspective of this process, there's just a single
     # GPU.
 
-    # Uncomment this and remove the force_gpu code in factory.py if you want to
-    # make the GPU choice be set at this point again.
-    # It was moved to factory.py to give more direct control over exactly which
-    # models got loaded onto which card, as there was a tight memory constraint
-    # that required some balancing for a 2x24GB GPU configuration.
-    #os.environ[_CUDA_VISIBLE_DEVICES] = str(gpu_id)
-    #assert torch.cuda.device_count() == 1, gpu_id
+    os.environ[_CUDA_VISIBLE_DEVICES] = str(gpu_id)
+    assert torch.cuda.device_count() == 1, gpu_id
 
-    heyhi.setup_logging(label=f"pid:{os.getpid()}")
+    heyhi.setup_logging(label=f"pid:{os.getpid()} single executor")
     _THE_MODEL = model_factory(parlai_model_cfg)
     assert isinstance(_THE_MODEL, BaseWrapper)
     logging.info(f"Process {os.getpid()} : Done loading")
+
+
+def _start_process_dict():
+    global _THE_MODELS
+    _THE_MODELS = {}
+    heyhi.setup_logging(label=f"pid:{os.getpid()} second GPU executor")
+    logging.info(f"Second process started {os.getpid()}")
+
+    gpu_id = "0"
+    if os.getenv("SECOND_GPU") is not None:
+        gpu_id = os.getenv("SECOND_GPU")
+    logging.info(f"Process {os.getpid()} : Setting secondary GPU to {gpu_id}")
+    
+    # PyTorch has a memory cache / allocation layer to make deallocations faster .. unfortunately it also causes
+    # "out of memory" errors that make no sense, and makes debugging memory use very difficult
+    os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
+    # This makes debugging easier as errors will happen when they occur
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id
+    
+    loaded = False
+    while not loaded:
+        try:
+            torch.cuda.set_device("cuda:0") # the above changes the device to be 0
+            torch.cuda.empty_cache()
+            cur_device = torch.zeros(1).to("cuda").device
+            cur_available = torch.cuda.is_available()
+            logging.info(f"Device: {cur_device}, Available: {cur_available}")
+            loaded = True
+        except RuntimeError as e:
+            logging.error(f"GPU 0 RuntimeError loading data: {e}")
+            logging.error(f"GPU 0 Trying again...")
+        except:
+            logging.error(f"GPU 0 Error loading data")
+            logging.error(f"GPU 0 Trying again...")
+
+# Load the model into a global dictionary
+def _load_model_to_global_var_dict(args):
+    key, parlai_model_cfg, gpu_id, model_factory = args
+    global _THE_MODELS
+    assert _THE_MODELS is not None, f"No _THE_MODELS dictionary, _start_process_dict not called?"
+    assert _THE_MODELS.get(key) is None, f"Double loading {key}? ({os.getpid()})"
+    
+    heyhi.setup_logging(label=f"#2 pid:{os.getpid()}")
+    _THE_MODELS[key] = model_factory(parlai_model_cfg)
+    assert isinstance(_THE_MODELS[key], BaseWrapper)
+    logging.info(f"Process {os.getpid()} : Done loading {key}")
 
 
 def get_global_model():
@@ -240,6 +347,10 @@ def get_global_model():
     assert _THE_MODEL is not None, f"Model is not loaded in process {os.getpid()}"
     return _THE_MODEL
 
+def get_global_model_dict(key: str):
+    global _THE_MODELS
+    assert _THE_MODELS[key] is not None, f"Model {key} is not loaded in process {os.getpid()}"
+    return _THE_MODELS[key]
 
 def _compute(func_name: str, game_json: Optional[str], *args, **kwargs):
     global _THE_MODEL
@@ -255,6 +366,19 @@ def _compute(func_name: str, game_json: Optional[str], *args, **kwargs):
     torch.cuda.empty_cache()
     return result
 
+def _compute_dict(key: str, func_name: str, game_json: Optional[str], *args, **kwargs):
+    global _THE_MODELS
+    assert _THE_MODELS[key] is not None, f"Model {key} is not loaded in process {os.getpid()}"
+
+    func = getattr(_THE_MODELS[key], func_name)
+    if game_json is not None:
+        game = pydipcc.Game.from_json(game_json)
+        result = func(game, *args, **kwargs)
+    else:
+        result = func(*args, **kwargs)
+
+    torch.cuda.empty_cache()
+    return result
 
 def _get(attr_name: str):
     global _THE_MODEL
@@ -262,6 +386,11 @@ def _get(attr_name: str):
 
     return getattr(_THE_MODEL, attr_name)
 
+def _get_dict(key: str, attr_name: str):
+    global _THE_MODELS
+    assert _THE_MODELS[key] is not None, f"Model {key} is not loaded in process {os.getpid()}"
+
+    return getattr(_THE_MODELS[key], attr_name)
 
 class InstantFuture(concurrent.futures.Future):
     def __init__(self, result):

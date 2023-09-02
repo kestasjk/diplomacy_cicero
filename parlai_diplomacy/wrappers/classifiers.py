@@ -749,10 +749,10 @@ class EnsembleNonsenseClassifierWrapper:
         logging.info(
             f"Classifiers in ensemble: "
             + str(
-                {
-                    name: classifier_executor.get_model_opt()["task"]
+                [
+                    name
                     for name, classifier_executor in self.classifier_executors.items()
-                }.items()
+                ]
             )
         )
 

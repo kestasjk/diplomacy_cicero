@@ -133,13 +133,6 @@ if os.getenv("SLACK_MESSAGE_REVIEW_URL") is not None:
     SLACK_MESSAGE_REVIEW_URL = os.getenv("SLACK_MESSAGE_REVIEW_URL") # "http://localhost:8894/"
 logger.info(f"SLACK_MESSAGE_REVIEW_URL: {SLACK_MESSAGE_REVIEW_URL}")
 
-if os.getenv("CUDA_VISIBLE_DEVICES") is None:
-    logger.warning("CUDA_VISIBLE_DEVICES not set. This may cause issues with GPU memory. For a 2 GPU setup 0,1 is expected.")
-elif os.getenv("CUDA_VISIBLE_DEVICES") != "0,1":
-    logger.warning("CUDA_VISIBLE_DEVICES is set to something other than 0,1. This may cause issues with GPU memory. For a 2 GPU setup 0,1 is expected; you may experience memory issues if running a full press bot.")
-else:
-    logger.info("CUDA_VISIBLE_DEVICES is set to 0,1. Expecting to run on 2 GPUs.")
-
 GLOBAL_CHAT_COUNTRY_ID = 0
 STATUS_ROUTE = "game/status"
 MISSING_ORDERS_ROUTE = "players/missing_orders"
@@ -1954,6 +1947,9 @@ def _play_webdip_without_retries(cfg: conf_cfgs.PlayWebdipTask, agent: BaseAgent
         bot.maybe_load_from_checkpoint(get_checkpoint_path_for_api_key(bot.api_key))
     last_bot = bots[0]
     last_ctx = None
+
+    last_cycle_processed = True
+
     for bot in itertools.cycle(bots):
         if get_kill_switch():
             logging.info("Kill switch pulled! Sleeping for 5 seconds")
@@ -1976,6 +1972,11 @@ def _play_webdip_without_retries(cfg: conf_cfgs.PlayWebdipTask, agent: BaseAgent
             fpath=log_dir / "main.log", file_level=file_level, console_level=console_level,
         )
 
+        # If there was nothing to do last cycle wait a bit before the next request to avoid flooding the server
+        if not last_cycle_processed:
+            time.sleep(5)
+            last_cycle_processed = False
+        
         # Keep-alive for restarting bots
         set_keep_alive_and_last_restart_ts(bot.account_name, keep_alive=Timestamp.now())
 
@@ -2059,6 +2060,8 @@ def _play_webdip_without_retries(cfg: conf_cfgs.PlayWebdipTask, agent: BaseAgent
             f"bot_handles_dialogue={bot_handles_dialogue} bot_handles_orders={bot_handles_orders} bot_handles_draws={bot_handles_draws}"
         )
 
+        last_cycle_processed = True
+        
         # Saving config for every phase to the log.
         # logging.info("Cfg:\n%s", cfg)
         game_fp = construct_game_fp(game_dir, ctx, id_to_power)

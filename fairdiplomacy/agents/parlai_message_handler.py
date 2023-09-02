@@ -307,6 +307,7 @@ class ParlaiMessageHandler:
                 load_order_wrapper,
                 cfg.allow_multi_gpu,
                 load_model_on_main=True,
+                key="pseudo_orders"
             )
         else:
             assert model_orders is not None

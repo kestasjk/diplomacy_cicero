@@ -86,8 +86,9 @@ class PlausibleOrderSampler:
         self.batch_size = cfg.batch_size or self.req_size
         self.base_strategy_model = base_strategy_model
         if parlai_model_cfg is not None and parlai_model_cfg.model_path is not None:
+            # If there are multiple GPUs this function would let the model run across multiple GPUs at once
             self.parlai_model_executor = load_wrapper_executor(
-                parlai_model_cfg, load_order_wrapper, cfg.allow_multi_gpu, True
+                parlai_model_cfg, load_order_wrapper, cfg.allow_multi_gpu, True, "plausible_orders"
             )
         elif parlai_model is not None:
             self.parlai_model_executor = wrap_parlai_model_to_executor(parlai_model)
