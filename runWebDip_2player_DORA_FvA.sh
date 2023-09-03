@@ -10,7 +10,7 @@ conda activate diplomacy_cicero
 pushd $(dirname "$0")
 
 python fairdiplomacy_external/run.py \
-	--adhoc -c conf/c07_play_webdip/play.prototxt \
+	--adhoc -c conf/c07_play_webdip/play_dora_fva.prototxt \
 	api_key=$FAIRBOT_APIKEY \
 	account_name=FairBot2 \
 	allow_dialogue=false \

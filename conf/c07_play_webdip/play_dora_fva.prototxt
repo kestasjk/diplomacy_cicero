@@ -1,5 +1,6 @@
 includes {path: "agents/searchbot.prototxt"; mount: "agent";}
 play_webdip {
-	variant_id: 1,
+	variant_id: 15,
+	ready_immediately: true,
 	webdip_url: "https://webdiplomacy.net/"
 }

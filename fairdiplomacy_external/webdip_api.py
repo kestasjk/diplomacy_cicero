@@ -817,22 +817,64 @@ class WebdipBotWrapper:
             logging.warning(f"New cfg:\n{self.cfg.to_dict()}")
             return
 
-        if "PLAYER_STATE_DICTS" in data:
+        if "CONTEXTS" in data:
+            for ctx in data["CONTEXTS"]:
+                state_dict = self.load_state(path, ctx)
+                if ctx not in self.players:
+                    # relies on "power" being the name of the key in Player's state_dict
+                    self.players[ctx] = Player(self.agent, state_dict["power"])
+                self.players[ctx].load_state_dict(state_dict)
+                self.save_state(path, ctx, self.players[ctx])
+        elif "PLAYER_STATE_DICTS" in data:
+            # This is a legacy thing; load this data up and save it to a PLAYER_STATE_DICTS folder
+            # so that on the next context load it can be loaded 
+            logger.warn("Loading data from PLAYER_STATE_DICTS; this is deprecated and should only happen when loading from old checkpoints")
             for ctx, state_dict in data["PLAYER_STATE_DICTS"].items():
                 if ctx not in self.players:
                     # relies on "power" being the name of the key in Player's state_dict
                     self.players[ctx] = Player(self.agent, state_dict["power"])
                 self.players[ctx].load_state_dict(state_dict)
+                self.save_state(path, ctx, self.players[ctx])
 
-    def maybe_save_checkpoint(self, path: pathlib.Path) -> None:
+    def maybe_save_checkpoint(self, path: pathlib.Path, ctx: Context) -> None:
         data = {a: getattr(self, a) for a in self.SERIALIZED_ATTRS}
-        data["PLAYER_STATE_DICTS"] = {
-            ctx: player.state_dict() for ctx, player in self.players.items()
-        }
+        # This causes the save to take ~15 seconds when playing 10 games, which is ~1/3rd the total loop time
+        # Instead only save the context that has just been updated
+        #data["PLAYER_STATE_DICTS"] = {
+        #    ctx: player.state_dict() for ctx, player in self.players.items()
+        #}
+        data["CONTEXTS"] = [
+            ctx for ctx, player in self.players.items()
+        ]
         data["CHECKPOINT_CFG"] = self.cfg.to_dict()
         logging.info(f"Saving agent/webdip state checkpoint to {path.absolute()}")
         with atomicish_open_for_writing_binary(path) as f:
             torch.save(data, f)
+        self.save_state(path, ctx, self.players[ctx])
+
+    def get_state_filename(self, path: pathlib.Path, ctx: Context) -> pathlib.Path:
+        dictPath = path.parent.joinpath("PLAYER_STATE_DICTS")
+        if not os.path.exists(dictPath.absolute()):
+            os.mkdir(dictPath.absolute())
+        agentPath = dictPath.joinpath(path.name.replace(".pt",""))
+        if not os.path.exists(agentPath.absolute()):
+            os.mkdir(agentPath.absolute())
+        return agentPath.joinpath(str(ctx.gameID)+"_"+str(ctx.countryID)+".pt")
+
+    def save_state(self, path: pathlib.Path, ctx: Context, p: Player) -> None:
+        statePath = self.get_state_filename(path, ctx)
+        logging.info(f"Saving player state checkpoint to {statePath.absolute()}")
+        with atomicish_open_for_writing_binary(statePath) as f:
+            torch.save(p.state_dict(), f)
+
+    def load_state(self, path: pathlib.Path, ctx: Context) -> Any:
+        statePath = self.get_state_filename(path, ctx)
+        logging.info(f"Loading player state checkpoint from {statePath.absolute()}")
+        if os.path.exists(statePath.absolute()):
+            return torch.load(statePath.absolute())
+        else:
+            logging.warn(f"Could not find player state checkpoint at {statePath.absolute()}")
+            return None
 
     def post_process(self, ctx: Context):
         logging.info("Running bot post-processing (e.g. checkpoint state)")
@@ -841,7 +883,7 @@ class WebdipBotWrapper:
             cur_annotator = meta_annotations.pop_annotator()
             self.annotators[ctx] = cur_annotator
 
-        self.maybe_save_checkpoint(self.checkpoint_dir)
+        self.maybe_save_checkpoint(self.checkpoint_dir, ctx)
 
     @retry_on_connection_error
     def get_missing_orders_json(self):
