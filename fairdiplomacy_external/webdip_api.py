@@ -126,6 +126,11 @@ if os.getenv("FORCE_SENDING_IMMIDIATELY") is not None:
     FORCE_SENDING_IMMIDIATELY = True
 logger.info(f"FORCE_SENDING_IMMIDIATELY: {FORCE_SENDING_IMMIDIATELY}")
 
+USE_MULTIPLEXING = False
+if os.getenv("USE_MULTIPLEXING") is not None:
+    USE_MULTIPLEXING = True
+logger.info(f"USE_MULTIPLEXING: {USE_MULTIPLEXING}")
+
 # If this is set messages will be sent to slack notifying there are messages for review.
 # Unlikely to be useful outside an academic / research context
 SLACK_MESSAGE_REVIEW_URL = None
@@ -202,20 +207,20 @@ def get_requests_wrapper() -> requests.Session:
 
 
 def get_req(url, params, api_key):
-    logging.info(f"Hitting {params['route']}")
+    logging.debug(f"Hitting {params['route']}")
     resp = get_requests_wrapper().get(
         url, params=params, headers=get_api_header(api_key), timeout=60,
     )
-    logging.info(f"Got response from {params['route']}")
+    logging.debug(f"Got response from {params['route']}")
     return resp
 
 
 def post_req(url, params, json, api_key):
-    logging.info(f"Hitting {params['route']}")
+    logging.warn(f"*POSTING* {params['route']}")
     resp = get_requests_wrapper().post(
         url, params=params, headers=get_api_header(api_key), json=json, timeout=60,
     )
-    logging.info(f"Got response from {params['route']}")
+    logging.debug(f"Got response from {params['route']}")
     return resp
 
 
@@ -820,11 +825,17 @@ class WebdipBotWrapper:
         if "CONTEXTS" in data:
             for ctx in data["CONTEXTS"]:
                 state_dict = self.load_state(path, ctx)
+                #resaveState = False
                 if ctx not in self.players:
                     # relies on "power" being the name of the key in Player's state_dict
                     self.players[ctx] = Player(self.agent, state_dict["power"])
+                    #resaveState = True
                 self.players[ctx].load_state_dict(state_dict)
-                self.save_state(path, ctx, self.players[ctx])
+                # I don't understand why save the state right after loading it, unless the context doesnt exist somehow?
+                # so only resave state if the context didn't exist, otherwise it seems
+                # to just load then save what was just loaded, which doubles the load time
+                #if resaveState:
+                #    self.save_state(path, ctx, self.players[ctx])
         elif "PLAYER_STATE_DICTS" in data:
             # This is a legacy thing; load this data up and save it to a PLAYER_STATE_DICTS folder
             # so that on the next context load it can be loaded 
@@ -877,7 +888,7 @@ class WebdipBotWrapper:
             return None
 
     def post_process(self, ctx: Context):
-        logging.info("Running bot post-processing (e.g. checkpoint state)")
+        logging.debug("Running bot post-processing (e.g. checkpoint state)")
 
         if meta_annotations.has_annotator():
             cur_annotator = meta_annotations.pop_annotator()
@@ -891,13 +902,29 @@ class WebdipBotWrapper:
         return safe_json_loads(missing_orders_resp.content)
 
     @retry_on_connection_error
-    def get_active_games_json(self):
-        active_games_resp = get_req(self.api_url, {"route": ACTIVE_GAMES_ROUTE}, self.api_key)
-        resp = safe_json_loads(active_games_resp.content)
-        if "games" not in resp:
-            logging.error(f"Bad active games response: {resp}")
-            return []
-        return resp["games"]
+    def get_active_games_json(self, useMultiplexOffset=True):
+        if useMultiplexOffset:
+            # Use multiplexing to get all games for 7 user IDs that can allow a single AI engine to service multiple countries in a single game
+            # When other requests are made the game ID being serviced is included in the request, and the game ID for a multiplexed api key
+            # encodes the multiplex offset within the game ID, using multiplexGameID = gameID * 10 + multiplexOffset + 100000000
+            allGames = {}
+            for multiplexOffset in range(1,8):
+                active_games_resp = get_req(self.api_url, {"route": ACTIVE_GAMES_ROUTE, "multiplexOffset": multiplexOffset}, self.api_key)
+                resp = safe_json_loads(active_games_resp.content)
+                if "games" not in resp:
+                    logging.error(f"Bad active games response: {resp}")
+                    return []
+                else:
+                    for g in resp["games"]:
+                        allGames[g['gameID']] = g
+            return allGames.values()
+        else:
+            # We are running in a 1:1 apikey - user bot setting
+            active_games_resp = get_req(self.api_url, {"route": ACTIVE_GAMES_ROUTE}, self.api_key)
+            resp = safe_json_loads(active_games_resp.content)
+            if "games" not in resp:
+                logging.error(f"Bad active games response: {resp}")
+                return []
 
     def make_context_from_json(self, j):
         return Context(
@@ -922,8 +949,9 @@ class WebdipBotWrapper:
             )
             return cur_ctx, False
 
-        active_games_json = self.get_active_games_json()
-        logger.info(f"All active games: {pformat(active_games_json)}")
+        active_games_json = self.get_active_games_json(USE_MULTIPLEXING)
+        logger.debug(f"All active games: {pformat(active_games_json)}")
+        logger.info(f"Active games count: {len(active_games_json)}")
 
         # Filter games by game_id (list of int game ids) or game_name (wildcard string-matched game name)
         logger.info(f"Filtering games, game_ids= {self.game_ids}, game_name= {self.game_name}")
@@ -935,7 +963,8 @@ class WebdipBotWrapper:
         ]
 
         if len(active_games_json_filtered) != len(active_games_json):
-            logger.info(f"Filtered games: {pformat(active_games_json_filtered)}")
+            logger.debug(f"Filtered games: {pformat(active_games_json_filtered)}")
+            logger.info(f"Filtered games count: {len(active_games_json_filtered)}")
 
         missing_orders_json_filtered = [
             x
@@ -944,7 +973,8 @@ class WebdipBotWrapper:
             and "Ready" not in x["orderStatus"].split(",")
             and "None" not in x["orderStatus"].split(",")
         ]
-        logger.info(f"All games awaiting orders: {pformat(missing_orders_json_filtered)}")
+        logger.debug(f"All games awaiting orders: {pformat(missing_orders_json_filtered)}")
+        logger.info(f"Games awaiting orders: {len(missing_orders_json_filtered)}")
 
         if len(missing_orders_json_filtered) > 0:
             found_ctx = self.make_context_from_json(missing_orders_json_filtered[0])
@@ -966,9 +996,9 @@ class WebdipBotWrapper:
         press_ctxs_sorted = sorted(
             press_ctxs, key=lambda ctx: self.context_last_checked.get(ctx, -math.inf)
         )
-        logging.info(f"press_ctxs_sorted= {press_ctxs_sorted}")
-        logging.info(f"ctxs_to_game_states= {self.context_to_dialogue_state}")
-        logging.info(f"context_last_checked: {self.context_last_checked}")
+        logging.debug(f"press_ctxs_sorted= {press_ctxs_sorted}")
+        logging.debug(f"ctxs_to_game_states= {self.context_to_dialogue_state}")
+        logging.debug(f"context_last_checked: {self.context_last_checked}")
         for ctx in press_ctxs_sorted:
             if self.game_ids is not None and ctx.gameID not in self.game_ids:
                 continue
@@ -993,7 +1023,7 @@ class WebdipBotWrapper:
                     agent_power=PRESS_COUNTRY_ID_TO_POWER[ctx.countryID],
                 )
 
-            logging.info(
+            logging.debug(
                 f"for ctx={ctx}, realtime state is {cur_game.phase, self.get_message_history_length(ctx, cur_game)}"
             )
 
@@ -1011,11 +1041,11 @@ class WebdipBotWrapper:
             if self.check_for_actionable_message_state(ctx, cur_game):
                 return ctx, False
 
-        return None, False
+        return None, False 
 
     @retry_on_connection_error
     def get_status_json(self, ctx: Context) -> Optional[Json]:
-        logging.info(f"get_status_json for {ctx}")
+        logging.debug(f"get_status_json for {ctx}")
         status_json = get_status_json(ctx)
         self.latest_status_json = status_json
         return status_json
@@ -1639,7 +1669,7 @@ class WebdipBotWrapper:
                     "Message proposal being force sent. This should only be used for testing!"
                 )
             else:
-                logging.info("Message proposal approved.")
+                logging.debug("Message proposal approved.")
 
             msg: OutboundMessageDict = {
                 "sender": message_review["power"],
@@ -1647,9 +1677,9 @@ class WebdipBotWrapper:
                 "message": message_review["msg_proposals"][0]["msg"],
                 "phase": game.current_short_phase,
             }
-            logging.info("Trying to submit to Webdip.")
+            logging.debug("Trying to submit to Webdip.")
             status_json, timestamp = self.send_message(ctx, id_to_power, msg)
-            logging.info(f"Message successfully sent at time {timestamp}")
+            logging.debug(f"Message successfully sent at time {timestamp}")
             if recipient:
                 assert msg["recipient"] == recipient, (recipient, msg)
             meta_annotations.after_message_add({**msg, "time_sent": timestamp})  # type: ignore
@@ -1747,7 +1777,7 @@ class WebdipBotWrapper:
             if order["fromTerrID"] in coast_id_to_loc_id:
                 order["fromTerrID"] = coast_id_to_loc_id[order["fromTerrID"]]
 
-        logging.info(f"JSON: {pformat(agent_orders_json)}")
+        logging.debug(f"JSON: {pformat(agent_orders_json)}")
         orders_resp = post_req(
             self.api_url, {"route": POST_ORDERS_ROUTE}, agent_orders_json, self.api_key
         )
@@ -1782,7 +1812,7 @@ class WebdipBotWrapper:
             logger.info(e)
             return
 
-        logger.info(f"Response: {pformat(orders_resp_json)}")
+        logger.debug(f"Response: {pformat(orders_resp_json)}")
 
         # sanity check that the orders were processed correctly
         order_req_by_unit = {
@@ -1911,7 +1941,7 @@ def play_webdip(cfg: conf_cfgs.PlayWebdipTask):
 def _play_webdip_without_retries(cfg: conf_cfgs.PlayWebdipTask, agent: BaseAgent):
     logger = logging.getLogger()
     file_level = getattr(logger, "_file_level", logging.INFO)
-    console_level = getattr(logger, "_console_level", logging.DEBUG)
+    console_level = getattr(logger, "_console_level", logging.INFO)
     print(f"file_level= {file_level} console_level= {console_level}")
     log_dir = pathlib.Path(cfg.log_dir % dict(user=getpass.getuser()))
     if cfg.recipient:
@@ -2099,7 +2129,7 @@ def _play_webdip_without_retries(cfg: conf_cfgs.PlayWebdipTask, agent: BaseAgent
             power,
             cfg.recipient,
         )
-        logging.info(
+        logging.debug(
             f"bot_handles_dialogue={bot_handles_dialogue} bot_handles_orders={bot_handles_orders} bot_handles_draws={bot_handles_draws}"
         )
 
@@ -2219,6 +2249,7 @@ def _play_webdip_without_retries(cfg: conf_cfgs.PlayWebdipTask, agent: BaseAgent
                         logger.info(
                             f"Due to being in rulebook press, 5min phases, and in R/A phase, will sleep {sec_to_sleep_before_send_orders} (~unif([5,15])) seconds before sending orders"
                         )
+                        # Why though?
                         time.sleep(sec_to_sleep_before_send_orders)
                         logger.info(f"Woke up! Attempting to send orders now.")
 

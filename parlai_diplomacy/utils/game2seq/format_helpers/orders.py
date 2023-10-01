@@ -601,6 +601,14 @@ class OrdersUnflattener(BaseFormatHelper):
 
         current_action_seq, substrs = substrs[0], substrs[1:]
         if len(substrs) % 2 != 0:
+            # Example of a generated output seq that triggers this error:
+            # A CON R CON <-- Strange that this implies CON retreat to CON
+            # F1903M
+            # A CON R SMY
+            # F SMY H <-- Strange that this is on a new line
+            # As this is one of many candidates try to ignore this and continue
+            logging.error("!!! Badly formatted rollout action: %s", seq)
+            return None
             raise ValueError(seq)
 
         rollout_action = {

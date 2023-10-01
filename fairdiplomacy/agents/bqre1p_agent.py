@@ -227,7 +227,7 @@ def _make_bqre_data(
     scale_lambdas_by_power: Dict[Power, float],
     agent_power: Optional[Power],
 ) -> BRMData:
-    logging.info(f"Making BQRE data with scale_lambdas {scale_lambdas} pow_lambdas {pow_lambdas}")
+    logging.debug(f"Making BQRE data with scale_lambdas {scale_lambdas} pow_lambdas {pow_lambdas}")
     return BRMData(
         {
             player_type: CFRData(
@@ -523,10 +523,10 @@ class BQRE1PAgent(SearchBotAgent):
             stdevs_by_power_list = [
                 math.sqrt(variance + epsilon * epsilon) for variance in variances_by_power_list
             ]
-            logging.info(
+            logging.debug(
                 f"Dynamic lambda: power means: {list(zip(POWERS,['%.3f' % x for x in means_by_power_list]))}"
             )
-            logging.info(
+            logging.debug(
                 f"Dynamic lambda: power stdevs (after epsilon {epsilon}): {list(zip(POWERS,['%.3f' % x for x in stdevs_by_power_list]))}"
             )
 
@@ -536,7 +536,7 @@ class BQRE1PAgent(SearchBotAgent):
             dynamic_lambda_scale_by_power = dict(zip(POWERS, dynamic_lambda_scale_by_power_list))
             agent_state.dynamic_lambda_scale_cache[phase] = dynamic_lambda_scale_by_power
 
-        logging.info(
+        logging.debug(
             f"Dynamic lambda final scale: {[(power,'%.3f' % x) for (power,x) in agent_state.dynamic_lambda_scale_cache[phase].items()]}"
         )
         return agent_state.dynamic_lambda_scale_cache[phase]
@@ -647,7 +647,7 @@ class BQRE1PAgent(SearchBotAgent):
         last_search_iter = False
         for bqre_iter in range(self.n_rollouts):
             if last_search_iter:
-                logging.info(f"Early exit from BCFR after {bqre_iter} iterations by timeout")
+                logging.debug(f"Early exit from BCFR after {bqre_iter} iterations by timeout")
                 break
             elif deadline is not None and time.monotonic() >= deadline:
                 last_search_iter = True
@@ -799,14 +799,14 @@ class BQRE1PAgent(SearchBotAgent):
                 )
             },
         )
-        logging.info(
+        logging.debug(
             "BQRE Values (Agent Type: %s): %s",
             self.agent_type,
             {p: f"{bqre_data.get_type_data(self.agent_type).avg_utility(p):.3f}" for p in POWERS},
         )
 
         timings.stop()
-        timings.pprint(logging.getLogger("timings").info)
+        timings.pprint(logging.getLogger("timings").debug)
 
         if bilateral_stats is not None:
             cfr_data = bqre_data.get_best_type_data()
@@ -866,7 +866,7 @@ class BQRE1PAgent(SearchBotAgent):
         else:
             belief_state = BeliefState(self.player_types)
 
-        logging.info(f"BEGINNING BQRE run_search_with_conditional_evs, agent_power={agent_power}")
+        logging.debug(f"BEGINNING BQRE run_search_with_conditional_evs, agent_power={agent_power}")
 
         # Compute blueprint policy for each of the different types
         with timings.create_subcontext() as sub_timings, sub_timings("rswce_get_plausible_order"):
@@ -1004,7 +1004,7 @@ class BQRE1PAgent(SearchBotAgent):
             ptype_avg_ret[player_type] = avg_ret
             ptype_final_ret[player_type] = final_ret
 
-        logging.info(
+        logging.debug(
             "Raw Values: %s",
             {
                 p: f"{x:.3f}"
@@ -1016,7 +1016,7 @@ class BQRE1PAgent(SearchBotAgent):
                 )
             },
         )
-        logging.info(
+        logging.debug(
             "BQRE Values (Agent Type: %s): %s",
             self.agent_type,
             {p: f"{bqre_data.get_type_data(self.agent_type).avg_utility(p):.3f}" for p in POWERS},
@@ -1111,7 +1111,7 @@ class BQRE1PAgent(SearchBotAgent):
             if len(policy) == 1 and list(policy.keys())[0] == ():
                 continue
 
-            logging.info(f"BQRE1P.run_search between {agent_power}, {opponent}")
+            logging.debug(f"BQRE1P.run_search between {agent_power}, {opponent}")
             if timings is not None:
                 timings.start("corr_search_run_search")
             rescored_pair_policy = extract_bp_policy_for_powers(
@@ -1179,7 +1179,7 @@ class BQRE1PAgent(SearchBotAgent):
         scale_lambdas, pow_lambdas = self._get_scale_pow_lambdas(game)
         scale_lambdas_by_power = self._get_dynamic_lambda_scale(game, agent_power, agent_state)
 
-        logging.info(
+        logging.debug(
             f"Config br_regularize_lambda {br_regularize_lambda}, scale_lambdas {scale_lambdas}, pow_lambdas {pow_lambdas}"
         )
         br_regularize_lambda = (
@@ -1202,7 +1202,7 @@ class BQRE1PAgent(SearchBotAgent):
         result.set_policy_and_value_for_power(agent_power, best_action, best_value)
 
         timings.stop()
-        timings.pprint(logging.getLogger("timings").info)
+        timings.pprint(logging.getLogger("timings").debug)
         return result
 
     def log_bcfr_iter_state(
@@ -1220,16 +1220,16 @@ class BQRE1PAgent(SearchBotAgent):
         pre_rescore_bp: Optional[Policy] = None,
     ):
         agent_cfr_data = brm_data.get_type_data(self.agent_type)
-        logging.info(
+        logging.debug(
             f"<> [ {brm_iter+1} / {self.n_rollouts} ] {pwr} {game.phase} avg_utility={agent_cfr_data.avg_utility(pwr):.5f} cur_utility={state_utility:.5f} "
         )
-        logging.info(f">> {pwr} cur action at {brm_iter+1}: {power_sampled_orders[pwr]}")
+        logging.debug(f">> {pwr} cur action at {brm_iter+1}: {power_sampled_orders[pwr]}")
         if pre_rescore_bp is None:
-            logging.info(
+            logging.debug(
                 f"     {'agent_p':8s}  {'pop_p':8s}  {'bp_p':8s}  {'avg_u':8s}  {'cur_u':8s}  orders"
             )
         else:
-            logging.info(
+            logging.debug(
                 f"     {'agent_p':8s}  {'pop_p':8s}  {'bp_p':8s}  {'pre_bp_p':8s}  {'avg_u':8s}  {'cur_u':8s}  orders"
             )
         agent_type_action_probs: List[float] = agent_cfr_data.avg_strategy(pwr)
@@ -1253,11 +1253,11 @@ class BQRE1PAgent(SearchBotAgent):
         )
         for orders, a_p, p_p, bp_p, avg_u, cur_u in sorted_metrics:
             if pre_rescore_bp is None:
-                logging.info(
+                logging.debug(
                     f"|>  {a_p:8.5f}  {p_p:8.5f}  {bp_p:8.5f}  {avg_u:8.5f}  {cur_u:8.5f}  {orders}"
                 )
             else:
-                logging.info(
+                logging.debug(
                     f"|>  {a_p:8.5f}  {p_p:8.5f}  {bp_p:8.5f}  {pre_rescore_bp[orders]:8.5f}  {avg_u:8.5f}  {cur_u:8.5f}  {orders}"
                 )
 

@@ -984,7 +984,7 @@ class SearchBotAgent(BaseSearchAgent):
                 f"{power}\n{tabulate.tabulate(list(policy[power].items())[:6], tablefmt='plain')}"
                 for power in (agent_power, recipient_power)
             )
-            logging.info(f"\n{policy_name}:\n{policy_str}")
+            logging.debug(f"\n{policy_name}:\n{policy_str}")
 
         payoffs = torch.zeros((len(POWERS), 1))  # type: ignore
         for recipient_action, prob in eq_policy[recipient_power].items():
@@ -992,7 +992,7 @@ class SearchBotAgent(BaseSearchAgent):
 
         agent_payoff = float(payoffs[POWER2IDX[agent_power]])
         recipient_payoff = float(payoffs[POWER2IDX[recipient_power]])
-        logging.info(
+        logging.debug(
             f"_eval_action_under_bilateral_search payoffs:\n"
             f"{agent_power}: {float(agent_payoff)}\n"
             f"{recipient_power}: {float(recipient_payoff)}"
@@ -1602,7 +1602,7 @@ class SearchBotAgent(BaseSearchAgent):
                 )
                 for action in policy
             ]
-            logging.info(
+            logging.debug(
                 "\n"
                 + tabulate.tabulate(
                     rows,
@@ -1612,7 +1612,7 @@ class SearchBotAgent(BaseSearchAgent):
             )
             # ===========================================
 
-        logging.info(f"Pseudo orders for {agent_power}: {pseudo_orders}")
+        logging.debug(f"Pseudo orders for {agent_power}: {pseudo_orders}")
 
         self.log_pseudoorder_consistency(game, agent_power, pseudo_orders, state)
 

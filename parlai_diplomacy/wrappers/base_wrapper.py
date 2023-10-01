@@ -461,7 +461,7 @@ class BaseWrapper(ABC):
         Display input example
         """
         if not self.seen_input_example:
-            logging.info(
+            logging.debug(
                 f"First input example for model trained on task {self.task_name}: {formatted_input}"
             )
             self.seen_input_example = True

@@ -341,15 +341,15 @@ def compute_best_action_against_reweighted_opponent_joint_actions(
 
     action_values = sorted(action_values, key=lambda x: -x[-1])
 
-    logging.info(f"<> best response results using pice lambda {regularize_lambda}")
+    logging.debug(f"<> best response results using pice lambda {regularize_lambda}")
     effective_num_sample = sum(weights) ** 2 / sum([w ** 2 for w in weights])
     logging.info(f">> effective num sample: {effective_num_sample:.3f} / {len(weights)}")
-    logging.info(
+    logging.debug(
         f">> max weight: {max(weights) * len(weights):.4f}, min weight: {min(weights) * len(weights):.4f}"
     )
-    logging.info(f"      {'pice_v':8s}  {'v':8s}  {'bp_p':8s}  orders")
+    logging.debug(f"      {'pice_v':8s}  {'v':8s}  {'bp_p':8s}  orders")
     for action, value, prob, pice_value in action_values:
-        logging.info(f"|>:  {pice_value:8.5f}  {value:8.5f}  {prob:8.5f}  {action}")
+        logging.debug(f"|>:  {pice_value:8.5f}  {value:8.5f}  {prob:8.5f}  {action}")
 
     best_action, _, _, best_value = action_values[0]
     return best_action, best_value

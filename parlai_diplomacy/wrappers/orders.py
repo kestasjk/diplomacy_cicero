@@ -1008,15 +1008,13 @@ class ParlAIAllOrderIndependentRolloutWrapper(BaseOrderWrapper):
         )
         many_raw_pred = self.get_model_pred_many(seq, num_preds, batch_size, prefix_str=prefix_str)
 
-        orders = [
-            (
-                self.format_output_seq(raw_pred, current_phase=game.current_short_phase).get(
-                    cur_phase, ()
-                ),
-                score,
-            )
-            for raw_pred, score in many_raw_pred
-        ]
+        orders = []
+        for raw_pred, score in many_raw_pred:
+            order = self.format_output_seq(raw_pred, current_phase=game.current_short_phase)
+            # This can return none if something invalid is generated
+            if order is not None:
+                orders.append((order.get(cur_phase, ()), score))
+
         return orders
 
     def format_output_seq(self, *args, **kwargs) -> RolloutAction:

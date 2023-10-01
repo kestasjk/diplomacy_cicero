@@ -49,7 +49,7 @@ class BRSearchAgent(BaseAgent):
         plausible_orders = list(
             self.order_sampler.sample_orders(game, agent_power=power).get(power, {}).keys()
         )
-        logging.info("Plausible orders: {}".format(plausible_orders))
+        logging.debug("Plausible orders: {}".format(plausible_orders))
 
         if len(plausible_orders) == 0:
             return tuple()

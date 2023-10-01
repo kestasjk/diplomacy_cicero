@@ -114,7 +114,7 @@ class TimingCtx:
 
         tabulated = tabulate(rows, headers=headers, disable_numparse=True, stralign="right")
 
-        log_fn(f"TimingCtx summary:\n{indent(tabulated, '  ')}\n")
+        #log_fn(f"TimingCtx summary:\n{indent(tabulated, '  ')}\n")
 
     @contextlib.contextmanager
     def create_subcontext(self, prefix: str = ""):

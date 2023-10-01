@@ -67,8 +67,8 @@ bqre1p {
       }
 
       dialogue {
-        pseudo_orders_correspondence_threshold: -5e-2 # -5e-3
-        rating_threshold_first_message: 0.5 # 1.0 means disabled
+        pseudo_orders_correspondence_threshold: -5e-3
+        rating_threshold_first_message: 1.0 # 1.0 means disabled
         use_pseudoorders_initiate_sleep_heuristic: false
         grounding_last_playable_year: 1938
         initial_message_prompts_path: "models/markus_5m_prompts.json"

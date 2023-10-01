@@ -9,14 +9,17 @@ conda activate diplomacy_cicero
 
 pushd $(dirname "$0")
 
+# Use the 2nd GPU as the primary:
+export CUDA_VISIBLE_DEVICES="1"
+
 python fairdiplomacy_external/run.py \
 	--adhoc -c conf/c07_play_webdip/play_dora_fva.prototxt \
 	api_key=$FAIRBOT_APIKEY \
-	account_name=FairBot2 \
+	account_name=FairBot \
 	allow_dialogue=false \
-	log_dir="`pwd`/fair/logs/" \
+	log_dir="`pwd`/logs/" \
 	is_backup=false \
-	retry_exception_attempts=1 \
+	retry_exception_attempts=0 \
 	reset_bad_games=1 \
 	I.agent=agents/searchbot_neurips21_fva_dora.prototxt
 

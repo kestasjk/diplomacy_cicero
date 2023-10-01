@@ -150,7 +150,7 @@ def server_handler(
                             f"Server thread: performed {batch_count} forwards of avg batch size {frame_count / batch_count} "
                             f"in {delta} s, {frame_count / delta} forward/s."
                         )
-                        TimingCtx.pprint_multi([timings], logging.info)
+                        TimingCtx.pprint_multi([timings], logging.debug)
                         batch_count = frame_count = 0
                         timings.clear()
                         totaltic = time.time()

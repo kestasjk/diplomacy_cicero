@@ -619,7 +619,7 @@ class ParlaiMessageHandler:
                         recipient in joint_action
                     ), f"{recipient} not in {phase}: {pseudo_orders}"
 
-            logging.info(f"Pseudo orders for {power}: {pseudo_orders}")
+            logging.debug(f"Pseudo orders for {power}: {pseudo_orders}")
             meta_annotations.add_pseudo_orders_next_msg(pseudo_orders)
             self.model_dialogue.update_pseudo_orders(
                 game.current_short_phase, power, pseudo_orders

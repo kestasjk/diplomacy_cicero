@@ -12,6 +12,7 @@ conda activate diplomacy_cicero
 export CUDA_VISIBLE_DEVICES="1"
 export FIRST_GPU="1"
 export SECOND_GPU="0"
+export USE_MULTIPLEXING="1"
 
 python fairdiplomacy_external/run.py --adhoc \
     -c conf/c07_play_webdip/play.prototxt \

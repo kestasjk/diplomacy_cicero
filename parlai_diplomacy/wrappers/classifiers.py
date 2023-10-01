@@ -827,7 +827,7 @@ class EnsembleNonsenseClassifierWrapper:
 
         res = {name: output for name, output in classifiers_outputs.items()}
 
-        logging.info(
+        logging.debug(
             f"EnsembleNonsenseClassifierWrapper: message: {potential_msg['message']} phase:{potential_msg['phase']} time_sent:{potential_msg['time_sent']}: "
             f"{res}"
         )

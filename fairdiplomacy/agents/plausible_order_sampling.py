@@ -48,7 +48,7 @@ def renormalize_policy(policy: PowerPolicies) -> None:
         totals[power] = total_prob
         for orders in orders_to_probs:
             orders_to_probs[orders] /= total_prob
-    logging.info(
+    logging.debug(
         "Policy probability masses before normalization: %s",
         " ".join(f"{k}={v:.2f}" for k, v in sorted(totals.items())),
     )
@@ -128,15 +128,15 @@ class PlausibleOrderSampler:
         return limits
 
     def log_orders(self, game: pydipcc.Game, policies: PowerPolicies, label: str = "") -> None:
-        logging.info(f"Plausible orders {label} :")
+        logging.debug(f"Plausible orders {label} :")
         limit = self.get_plausible_order_limits(game)
         for power, orders_to_probs in policies.items():
-            logging.info(
+            logging.debug(
                 f"    {power} ( found {len(orders_to_probs)} / {limit[POWERS.index(power)]} )"
             )
-            logging.info("        prob,order")
+            logging.debug("        prob,order")
             for orders, probs in orders_to_probs.items():
-                logging.info(f"        {probs:10.5f}  {orders}")
+                logging.debug(f"        {probs:10.5f}  {orders}")
 
     def sample_orders(
         self,
@@ -596,7 +596,7 @@ class PlausibleOrderSampler:
                         ), f"WTF?\n\nspeaking_power: {speaking_power}\npwr: {pwr}\nphase: {game.current_short_phase}\ndialogue_phase: {game.get_metadata('last_dialogue_phase')}\npolicy:{policy}\n\ngame:\n{game.to_json()}\n\npwr_logprobs:\n{pwr_logprobs}\n\nsamples:\n{self.parlai_model.produce_many_order_for_target_power(game, view_of_power=speaking_power, target_power=pwr, num_preds=4, batch_size=4)}"
 
                     total_prob = sum(math.exp(logprob) for _, logprob in pwr_logprobs.items())
-                    logging.info(
+                    logging.debug(
                         f"Plausible orders for {pwr} captured {total_prob:.3f} of probability mass (at temperature 1)"
                     )
 
