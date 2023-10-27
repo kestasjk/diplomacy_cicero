@@ -90,7 +90,7 @@ def get_redis_host(db: Optional[int] = None) -> redis.Redis:
         redis_host = redis.Redis(
             host=REDIS_IP, port=PORT, db=db if db else PROD_DB, decode_responses=True
         )
-
+        redis_host.set("message_review_version", "1")
         redis_cache_version = redis_host.get("message_review_version")
         assert (
             redis_cache_version and int(redis_cache_version) == MESSAGE_REVIEW_CODEBASE_VERSION

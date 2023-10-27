@@ -925,6 +925,8 @@ class WebdipBotWrapper:
             if "games" not in resp:
                 logging.error(f"Bad active games response: {resp}")
                 return []
+            else:
+                return resp["games"]
 
     def make_context_from_json(self, j):
         return Context(
@@ -951,7 +953,12 @@ class WebdipBotWrapper:
 
         active_games_json = self.get_active_games_json(USE_MULTIPLEXING)
         logger.debug(f"All active games: {pformat(active_games_json)}")
-        logger.info(f"Active games count: {len(active_games_json)}")
+
+        # Check if active_games_json is None
+        if active_games_json is not None:
+            logger.info(f"Active games count: {len(active_games_json)}")
+        else:
+            logger.info(f"Active games count: None")
 
         # Filter games by game_id (list of int game ids) or game_name (wildcard string-matched game name)
         logger.info(f"Filtering games, game_ids= {self.game_ids}, game_name= {self.game_name}")
