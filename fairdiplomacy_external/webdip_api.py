@@ -766,6 +766,9 @@ class WebdipBotWrapper:
         # games in a fair round-robin fashion, avoiding starvation
         # Element 0 is the next to be serviced, and element N is the most recently serviced
         self.context_last_checked: Dict[Context, float] = {}
+        # A list of purged contexts, to prevent looping if the server thinks the context is good
+        # but the client doesn't
+        self.context_purged: List[str] = []
         self.dialogue_wakeup_times: Dict[Context, Timestamp] = {}
         self.estimated_msg_generation_time: Timestamp = Timestamp.from_seconds(0)
         self.game_dir = game_dir
@@ -795,6 +798,10 @@ class WebdipBotWrapper:
             del self.context_to_dialogue_state[ctx]
         if ctx in self.dialogue_wakeup_times:
             del self.dialogue_wakeup_times[ctx]
+        
+        # Keep track of this context being purged:
+        if ctx not in self.context_purged:
+            self.context_purged.append(str(ctx))
 
         game_fp = str(construct_game_fp(self.game_dir, ctx, PRESS_COUNTRY_ID_TO_POWER))
         delete_message_review(game_fp)
@@ -1011,6 +1018,10 @@ class WebdipBotWrapper:
                 continue
             self.context_last_checked[ctx] = time.time()
 
+            if str(ctx) in self.context_purged:
+                logging.info("A previously purged context was raised to be processed again, ignoring: " + str(ctx))
+                continue
+            
             try:
                 status_json = self.get_status_json(ctx)
             except WebdipGameNotFoundException:
@@ -1352,6 +1363,8 @@ class WebdipBotWrapper:
                 logging.info(f"Postprocess sleep heuristics triggered BLOCK for {msgs[0]}")
                 wakeup_time = INF_SLEEP_TIME
             assert wakeup_time is not None
+            # Remove 1000 seconds from the wait time
+            wakeup_time = wakeup_time - Timestamp.from_seconds(1000)
             logging.info(
                 "The message generated (wake in %ds from now): %s",
                 wakeup_time.to_seconds_int() - Timestamp.now().to_seconds_int(),
@@ -1413,7 +1426,7 @@ class WebdipBotWrapper:
             game_fp, message_review_data,
         )
 
-        return True
+        return (wakeup_time.to_seconds_int() - Timestamp.now().to_seconds_int()) < 0
 
     def get_message_review_and_update_last_serviced(
         self, game_fp: str
@@ -1492,10 +1505,10 @@ class WebdipBotWrapper:
             logging.debug("Force send")
             return True
         else:
-            if self.check_wakeup(ctx):
-                logging.debug("Can't send message, check_wakeup is true")
-            else:
-                logging.debug("Can't send message, check_wakeup is false")
+            #if self.check_wakeup(ctx):
+            #    logging.debug("Can't send message, check_wakeup is true")
+            #else:
+            #    logging.debug("Can't send message, check_wakeup is false")
             return False
 
     @retry_on_connection_error
@@ -1549,7 +1562,7 @@ class WebdipBotWrapper:
         logging.info(
             "Timestamp mismatch: (now - message_sent) = %d",
             Timestamp.now().to_seconds_int() - timestamp.to_seconds_int(),
-        )
+        )                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
         status_json = poll_until_message_appears(ctx, timestamp)
         if status_json is None:
             raise WebdipSendMessageFailedException(
@@ -1564,13 +1577,29 @@ class WebdipBotWrapper:
         status_json: Json,
         game_fp: str,
         recipient: Optional[Power] = None,
+        attempts: int = 1,
     ) -> bool:
         """
         1) if state has changed, re-compute wakeup time and re-generate message for review
         2) if message has not been reviewed, do nothing, return false
         3) if message has been rejected or does not exist, call generate_message_for_approval, return false
         4) if message has been approved, delete from cache and send message, return true
+
+        This routing was built with a team of message approvers in mind, and quick run cycle where the bots 
+        quickly return to the player.
+        When running on webDip there are no approvers, so waiting for approval is pointless, and waiting for the
+        next time the context is processed might mean a significant wait for a message that is otherwise ready
+        to go. Also by the time the context comes back around the message might be stale, requiring another
+        loop around all contexts before finally sending the message.
+
+        To work around this if this function returns false, that a message hasn't been sent, it is rerun 
+        straight away as if the context has cycled back around. Also any delays of less than 1000 seconds 
+        are ignored, as these small delays are just about appearing human to webDip players during the 
+        CICERO project, which isn't useful when players know it's a bot and just need a quick response.
         """
+        if attempts < 0:
+            return False
+
         id_to_power = PRESS_COUNTRY_ID_TO_POWER
 
         state_changed = self.has_state_changed(ctx, game)
@@ -1599,7 +1628,9 @@ class WebdipBotWrapper:
                 logging.info("Detected phase change. Updating annotator.")
                 meta_annotations.after_new_phase(game)
 
-            self.generate_message_for_approval(game_fp, game, recipient=recipient)
+            if self.generate_message_for_approval(game_fp, game, recipient=recipient):
+                return self.run_message_approval_flow(ctx, game, status_json, game_fp, recipient, attempts - 1)
+            
             return False
 
         if state_changed:
@@ -1616,13 +1647,16 @@ class WebdipBotWrapper:
                 logging.info("Detected phase change. Updating annotator.")
                 meta_annotations.after_new_phase(game)
 
-            self.generate_message_for_approval(game_fp, game, recipient=recipient)
+            if self.generate_message_for_approval(game_fp, game, recipient=recipient):
+                return self.run_message_approval_flow(ctx, game, status_json, game_fp, recipient, attempts - 1)
+            
             return False
 
         if not message_review:
             logging.info("Missing message review. Re-generating.")
             meta_annotations.after_message_generation_failed()
-            self.generate_message_for_approval(game_fp, game, recipient=recipient)
+            if self.generate_message_for_approval(game_fp, game, recipient=recipient):
+                return self.run_message_approval_flow(ctx, game, status_json, game_fp, recipient, attempts - 1)
             return False
 
         if not self.cfg.only_bump_msg_reviews_for_same_power:
@@ -1641,13 +1675,15 @@ class WebdipBotWrapper:
                 )
                 meta_annotations.after_message_generation_failed()
                 set_message_review(game_fp, message_review)
-                self.generate_message_for_approval(game_fp, game, recipient=recipient)
-
+                if self.generate_message_for_approval(game_fp, game, recipient=recipient):
+                    return self.run_message_approval_flow(ctx, game, status_json, game_fp, recipient, attempts - 1)
+                
                 return False
 
         # Re-gen when proposal marked as stale
         if message_review["flag_as_stale"]:
-            self.generate_message_for_approval(game_fp, game, recipient=recipient)
+            if self.generate_message_for_approval(game_fp, game, recipient=recipient):
+                return self.run_message_approval_flow(ctx, game, status_json, game_fp, recipient, attempts - 1)
             return False
 
         logging.info(
@@ -1710,7 +1746,8 @@ class WebdipBotWrapper:
             self.last_successful_message_time[ctx] = Timestamp.now()
             logging.info("Message proposal rejected. Re-generating.")
             meta_annotations.after_message_generation_failed()
-            self.generate_message_for_approval(game_fp, game, recipient=recipient)
+            if self.generate_message_for_approval(game_fp, game, recipient=recipient):
+                return self.run_message_approval_flow(ctx, game, status_json, game_fp, recipient, attempts - 1)
             return False
         raise Exception(
             f"Unexpected behavior in run_message_approval_flow. This is message review: {json.dumps(message_review)}. Is bot awake? {self.check_wakeup(ctx)}"
